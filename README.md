@@ -1,7 +1,8 @@
 # sre-gitops
 
 GitOps source for the SRE agent demo on minikube. ArgoCD (app-of-apps) installs everything
-in `apps/`; the SRE agent's fix PRs only touch `charts/apps/{pulsar,voyager}/`.
+in `apps/`. The SRE agent's fix PRs may touch `charts/apps/{pulsar,voyager}/` and
+`charts/infra/{grafana,loki,prometheus,fluent-bit}/`, never its own charts (`mcp-*`, `sre-agent`).
 
 ```
 bootstrap/            argocd-values.yaml (helm install once), root.yaml (app-of-apps)
@@ -72,3 +73,4 @@ kubectl --context=minikube -n o11y port-forward svc/grafana 3000:80
 | 1 | `charts/apps/pulsar/values.yaml` `faultInjection.failEvery: 3` | `AppErrorLogs` (Loki) | `failEvery: 0` |
 | 2 | pulsar `resources.limits.memory: 16Mi` | `ContainerOOMKilled` / `PodCrashLooping` | back to `128Mi` |
 | 3 | voyager `image.tag: v0.0.2` | `PodWaitingBadState` | back to `latest` |
+| 4 | `charts/infra/loki/values.yaml` `loki.singleBinary.resources.limits.memory: 64Mi` | `ContainerOOMKilled` / `PodCrashLooping` (ns o11y) | back to `768Mi` |

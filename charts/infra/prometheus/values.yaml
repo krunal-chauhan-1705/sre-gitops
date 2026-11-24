@@ -41,36 +41,42 @@ prometheus:
         repeat_interval: 4h
         routes:
           - receiver: sre-agent
-            matchers: ['namespace="default"']
+            matchers: ['namespace=~"default|o11y"']   # apps + monitoring stack
 
-  # GO-06: all rules scoped to the demo apps' namespace.
+  # GO-06: rules cover the demo apps (default) and the o11y stack, both diagnosable by the agent.
   serverFiles:
     alerting_rules.yml:
       groups:
         - name: sre-demo
           rules:
             - alert: PodCrashLooping
-              expr: increase(kube_pod_container_status_restarts_total{namespace="default"}[10m]) > 2
+              expr: increase(kube_pod_container_status_restarts_total{namespace=~"default|o11y"}[10m]) > 2
               for: 1m
               labels: {severity: warning}
               annotations:
                 summary: "{{ $labels.pod }}/{{ $labels.container }} restarted {{ $value | humanize }} times in 10m"
             - alert: PodWaitingBadState
-              expr: max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{namespace="default", reason=~"ImagePullBackOff|ErrImagePull|CrashLoopBackOff|CreateContainerConfigError"}) > 0
+              expr: max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{namespace=~"default|o11y", reason=~"ImagePullBackOff|ErrImagePull|CrashLoopBackOff|CreateContainerConfigError"}) > 0
               for: 2m
               labels: {severity: warning}
               annotations:
                 summary: "{{ $labels.pod }}/{{ $labels.container }} waiting: {{ $labels.reason }}"
             - alert: ContainerOOMKilled
               expr: |
-                max by (namespace, pod, container) (kube_pod_container_status_last_terminated_reason{namespace="default", reason="OOMKilled"}) > 0
+                max by (namespace, pod, container) (kube_pod_container_status_last_terminated_reason{namespace=~"default|o11y", reason="OOMKilled"}) > 0
                 and on (namespace, pod, container)
-                increase(kube_pod_container_status_restarts_total{namespace="default"}[10m]) > 0
+                increase(kube_pod_container_status_restarts_total{namespace=~"default|o11y"}[10m]) > 0
               labels: {severity: warning}
               annotations:
                 summary: "{{ $labels.pod }}/{{ $labels.container }} was OOMKilled"
+            - alert: PodPending
+              expr: max by (namespace, pod) (kube_pod_status_phase{namespace=~"default|o11y", phase="Pending"}) > 0
+              for: 5m
+              labels: {severity: warning}
+              annotations:
+                summary: "{{ $labels.pod }} has been Pending for 5m (unschedulable or volume not bound)"
             - alert: DeploymentReplicasMismatch
-              expr: kube_deployment_status_replicas_available{namespace="default"} < kube_deployment_spec_replicas{namespace="default"}
+              expr: kube_deployment_status_replicas_available{namespace=~"default|o11y"} < kube_deployment_spec_replicas{namespace=~"default|o11y"}
               for: 5m
               labels: {severity: warning}
               annotations:

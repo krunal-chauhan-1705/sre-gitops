@@ -16,8 +16,8 @@ chatUi:
 agentEnvFrom: &agentEnvFrom
   - secretRef: { name: sre-agent-secrets }
 agentEnv: &agentEnv
-  - { name: MODEL, value: "nvidia/nemotron-3-ultra-550b-a55b:free" }   # gate G-3
-  - { name: MODEL_FALLBACKS, value: "" }                                # comma-separated OpenRouter ids
+  - { name: MODEL, value: "particle-ai/particle-1:free" }              # gate G-3 (smoke test passed)
+  - { name: MODEL_FALLBACKS, value: "nvidia/nemotron-3-ultra-550b-a55b:free" }   # used on upstream 429
   - { name: FIX_MODEL, value: "" }                                      # empty = MODEL
   - { name: GITOPS_REPO, value: krunal-chauhan-1705/sre-gitops }
   - { name: GRAFANA_MCP_URL, value: "http://mcp-grafana.o11y.svc.cluster.local:8000/mcp" }
@@ -33,7 +33,7 @@ langgraph-cloud:
   images:
     apiServerImage:                  # langgraph dockerfile + minikube image build (sre-agent repo README)
       repository: sre-agent
-      tag: "0.1.0"
+      tag: "0.1.1"
       pullPolicy: IfNotPresent
   config:
     existingSecretName: sre-agent-secrets
