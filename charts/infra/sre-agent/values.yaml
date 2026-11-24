@@ -49,6 +49,17 @@ langgraph-cloud:
       envFrom: *agentEnvFrom
       extraEnv: *agentEnv            # SLACK_SOCKET_MODE=true is added here in Phase 6 (AS-05), API only
       securityContext: { allowPrivilegeEscalation: false }
+      # The chart's default probe execs `python /api/healthcheck.py`, which imports langgraph_api
+      # first: 560-870ms in an idle pod against a 1s timeout, so any load crash-looped the API
+      # (60 restarts). Same plain GET /ok the queue pod uses. `exec: null` drops the default handler.
+      startupProbe: &apiProbe
+        exec: null
+        httpGet: { path: /ok, port: 8000 }
+        periodSeconds: 10
+        timeoutSeconds: 3
+        failureThreshold: 6
+      readinessProbe: *apiProbe
+      livenessProbe: *apiProbe
     pdb:
       enabled: false
   # AS-01/02/03: split mode. The API pod gets N_JOBS_PER_WORKER=0; runs execute here.
