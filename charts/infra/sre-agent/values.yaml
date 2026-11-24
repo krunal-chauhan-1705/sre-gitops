@@ -33,7 +33,7 @@ langgraph-cloud:
   images:
     apiServerImage:                  # `langgraph build` against minikube docker-env (sre-agents README)
       repository: sre-agent
-      tag: "0.1.4"
+      tag: "0.1.5"
       pullPolicy: IfNotPresent
   config:
     existingSecretName: sre-agent-secrets
@@ -51,10 +51,12 @@ langgraph-cloud:
       securityContext: { allowPrivilegeEscalation: false }
       # The chart's default probe execs `python /api/healthcheck.py`, which imports langgraph_api
       # first: 560-870ms in an idle pod against a 1s timeout, so any load crash-looped the API
-      # (60 restarts). Same plain GET /ok the queue pod uses. `exec: null` drops the default handler.
+      # (60 restarts). Same GET /ok without that import: 40-230ms. Stays an `exec` handler on
+      # purpose: ArgoCD's Helm 4 keeps the chart's default exec even with `exec: null`, and two
+      # handlers on one probe are rejected by the API server.
       startupProbe: &apiProbe
-        exec: null
-        httpGet: { path: /ok, port: 8000 }
+        exec:
+          command: [python, -c, "import urllib.request as u; u.urlopen('http://localhost:8000/ok', timeout=2)"]
         periodSeconds: 10
         timeoutSeconds: 3
         failureThreshold: 6
