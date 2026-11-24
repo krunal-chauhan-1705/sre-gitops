@@ -1,0 +1,19 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: pulsar
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/krunal-chauhan-1705/sre-gitops.git
+    targetRevision: main
+    path: charts/apps/pulsar
+    helm:
+      releaseName: pulsar
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    syncOptions: [CreateNamespace=true]

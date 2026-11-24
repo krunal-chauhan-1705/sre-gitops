@@ -1,0 +1,6 @@
+dependencies:
+- name: langgraph-cloud
+  repository: https://langchain-ai.github.io/helm/
+  version: 0.3.5
+digest: sha256:b958e5865805d6ff692607799ee8e32f92d361b1020e07826938b750aaf27aef
+generated: "2026-11-17T18:03:19.954173+05:30"

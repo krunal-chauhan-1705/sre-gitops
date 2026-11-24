@@ -1,0 +1,10 @@
+apiVersion: v2
+name: kubernetes-mcp
+description: kubernetes-mcp-server, read-only, reached directly in-cluster by the SRE agent
+type: application
+version: 0.1.0
+appVersion: "0.0.66"
+dependencies:
+  - name: kubernetes-mcp-server
+    version: 0.1.0
+    repository: oci://ghcr.io/containers/charts

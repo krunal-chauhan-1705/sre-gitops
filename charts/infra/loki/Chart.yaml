@@ -1,0 +1,9 @@
+apiVersion: v2
+name: loki
+description: Local umbrella chart wrapping the community Loki chart for the minikube prototype
+version: 0.1.0
+appVersion: "3.6.8"
+dependencies:
+  - name: loki
+    version: "7.1.0"
+    repository: "https://grafana.github.io/helm-charts"

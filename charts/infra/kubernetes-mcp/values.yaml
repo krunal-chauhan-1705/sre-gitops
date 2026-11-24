@@ -1,0 +1,57 @@
+# Overrides for oci://ghcr.io/containers/charts/kubernetes-mcp-server 0.1.0.
+kubernetes-mcp-server:
+  fullnameOverride: mcp-kubernetes   # Service: http://mcp-kubernetes.o11y:8080/mcp
+
+  # One identity: the chart's ServiceAccount. One read-only ClusterRole, one binding to it
+  # (the binding's default subject is this ServiceAccount). No user/group bindings.
+  serviceAccount:
+    create: true
+    automountToken: true
+
+  ingress:
+    enabled: false
+
+  rbac:
+    create: true
+    extraClusterRoles:
+      - name: reader
+        rules:
+          - apiGroups: [""]
+            resources: [pods, services, events, endpoints, configmaps, namespaces, nodes, persistentvolumeclaims]
+            verbs: [get, list, watch]
+          - apiGroups: [""]
+            resources: [pods/log]
+            verbs: [get]
+          - apiGroups: [apps]
+            resources: [deployments, replicasets, statefulsets, daemonsets]
+            verbs: [get, list, watch]
+          - apiGroups: [batch]
+            resources: [jobs, cronjobs]
+            verbs: [get, list, watch]
+          - apiGroups: [events.k8s.io]
+            resources: [events]
+            verbs: [get, list, watch]
+          - apiGroups: [argoproj.io]
+            resources: [applications]
+            verbs: [get, list, watch]
+          - apiGroups: [metrics.k8s.io]
+            resources: [nodes, pods]
+            verbs: [get, list]
+    extraClusterRoleBindings:
+      - name: reader
+        roleRef:
+          name: reader
+
+  resources:
+    requests: {cpu: 10m, memory: 48Mi}
+    limits: {memory: 128Mi}
+
+  config:
+    cluster_provider_strategy: in-cluster
+    require_oauth: false
+    read_only: true            # server-side filter: only readOnlyHint tools are exposed
+    disable_destructive: true
+    toolsets: [core]
+    denied_resources:          # defense in depth; RBAC above has no secrets access either
+      - version: v1
+        kind: Secret

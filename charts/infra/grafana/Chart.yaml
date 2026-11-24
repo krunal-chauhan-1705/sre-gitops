@@ -1,0 +1,9 @@
+apiVersion: v2
+name: grafana
+description: Local umbrella chart wrapping the community Grafana chart for the minikube prototype
+version: 0.1.0
+appVersion: "13.1.1"
+dependencies:
+  - name: grafana
+    version: "12.8.0"
+    repository: "https://grafana-community.github.io/helm-charts"

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: mcp-grafana
+description: Official Grafana MCP server (read-only), pointed at the in-cluster Grafana
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

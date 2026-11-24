@@ -1,0 +1,23 @@
+# GO-11: every PR (including the SRE agent's fix PRs) must lint and render.
+name: helm-check
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.14.0
+      - name: lint + template every chart (dependencies are vendored in charts/*/charts)
+        run: |
+          set -e
+          for d in charts/infra/* charts/apps/*; do
+            echo "::group::$d"
+            helm lint "$d"
+            helm template "$(basename "$d")" "$d" > /dev/null
+            echo "::endgroup::"
+          done

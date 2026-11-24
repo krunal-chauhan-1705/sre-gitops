@@ -1,0 +1,19 @@
+image:
+  repository: voyager
+  tag: latest
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  port: 5050
+
+# Assumes pulsar is deployed in the same namespace (its Service is always named
+# "pulsar", see helm-charts/pulsar/templates/service.yaml). Override with a fully
+# qualified name (pulsar.<namespace>.svc.cluster.local) if it's deployed elsewhere.
+pulsar:
+  serviceUrl: http://pulsar:5001
+
+resources:
+  requests: {cpu: 10m, memory: 64Mi}
+  limits: {memory: 128Mi}

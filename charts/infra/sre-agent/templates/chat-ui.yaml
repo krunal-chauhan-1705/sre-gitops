@@ -1,0 +1,44 @@
+{{- if .Values.chatUi.enabled }}
+{{- $ui := .Values.chatUi }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sreagent.name" . }}-chat-ui
+  labels: {{- include "sreagent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: chat-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: chat-ui }
+  template:
+    metadata:
+      labels: {{- include "sreagent.labels" . | nindent 8 }}
+        app.kubernetes.io/component: chat-ui
+    spec:
+      containers:
+        - name: chat-ui
+          image: "{{ $ui.image.repository }}:{{ $ui.image.tag }}"
+          imagePullPolicy: {{ $ui.image.pullPolicy }}
+          ports: [{ name: http, containerPort: 3000 }]
+          env:
+            # Server-side proxy target; the browser only ever calls the UI's own /api route.
+            - { name: LANGGRAPH_API_URL, value: {{ include "sreagent.agentServerUrl" . | quote }} }
+          readinessProbe:
+            httpGet: { path: /, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /, port: http }
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources: {{- toYaml $ui.resources | nindent 12 }}
+          securityContext: { allowPrivilegeEscalation: false, runAsNonRoot: true, runAsUser: 1000 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "sreagent.name" . }}-chat-ui
+  labels: {{- include "sreagent.labels" . | nindent 4 }}
+spec:
+  selector: { app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: chat-ui }
+  ports: [{ name: http, port: 3000, targetPort: http }]
+{{- end }}

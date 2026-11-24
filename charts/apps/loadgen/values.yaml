@@ -1,0 +1,3 @@
+image: curlimages/curl:8.11.1
+target: http://voyager:5050/voyager/journey
+intervalSeconds: 2

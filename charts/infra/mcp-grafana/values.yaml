@@ -1,0 +1,22 @@
+image:
+  repository: grafana/mcp-grafana
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  port: 8000
+
+# Read-only tool categories only (no api/sift/incident/oncall); --disable-write is also set.
+enabledTools: datasource,prometheus,loki,alerting
+
+grafana:
+  url: http://grafana.o11y.svc.cluster.local
+  # Pre-created Secret holding a Grafana *Viewer* service-account token (README). Never in git.
+  serviceAccountTokenSecretName: mcp-grafana-token
+  serviceAccountTokenSecretKey: GRAFANA_SERVICE_ACCOUNT_TOKEN
+
+resources:
+  requests: {cpu: 10m, memory: 32Mi}
+  limits: {memory: 128Mi}

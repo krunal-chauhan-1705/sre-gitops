@@ -1,0 +1,40 @@
+# Wraps grafana/loki 7.1.0. Subchart config lives at loki.loki.* (double nesting is real).
+loki:
+  deploymentMode: SingleBinary
+  loki:
+    auth_enabled: false            # tenant is "fake" -> rules folder /rules/fake
+    commonConfig:
+      replication_factor: 1
+    storage:
+      type: filesystem
+    useTestSchema: true
+    rulerConfig:
+      alertmanager_url: http://prometheus-alertmanager.o11y.svc.cluster.local:9093
+      enable_api: true
+      storage:
+        type: local
+        local:
+          directory: /rules
+  # Sidecar loads ConfigMaps labelled loki_rule (from this release's namespace) into the ruler.
+  sidecar:
+    rules:
+      folder: /rules/fake
+  singleBinary:
+    replicas: 1
+    persistence:
+      enabled: true
+      size: 4Gi
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {memory: 768Mi}
+  write: {replicas: 0}
+  read: {replicas: 0}
+  backend: {replicas: 0}
+  gateway: {enabled: false}
+  lokiCanary: {enabled: false}
+  test: {enabled: false}
+  monitoring:
+    selfMonitoring: {enabled: false}
+  chunksCache: {enabled: false}
+  resultsCache: {enabled: false}
+  minio: {enabled: false}

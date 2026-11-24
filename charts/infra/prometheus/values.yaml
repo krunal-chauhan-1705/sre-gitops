@@ -1,0 +1,77 @@
+# Wraps prometheus-community/prometheus 29.19.0 with its bundled alertmanager.
+prometheus:
+  server:
+    retention: 3d
+    persistentVolume:
+      size: 4Gi
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {memory: 768Mi}
+  prometheus-pushgateway:
+    enabled: false
+  kube-state-metrics:
+    resources:
+      requests: {cpu: 10m, memory: 32Mi}
+      limits: {memory: 128Mi}
+  prometheus-node-exporter:
+    resources:
+      requests: {cpu: 10m, memory: 16Mi}
+      limits: {memory: 64Mi}
+
+  alertmanager:
+    enabled: true
+    persistence:
+      enabled: false
+    resources:
+      requests: {cpu: 10m, memory: 32Mi}
+      limits: {memory: 128Mi}
+    config:
+      global: {}
+      receivers:
+        - name: "null"
+        - name: sre-agent
+          webhook_configs:
+            - url: http://sre-agent-api-server.sre-agent.svc.cluster.local/alertmanager
+              send_resolved: false
+      route:
+        receiver: "null"
+        group_by: [alertname, namespace]
+        group_wait: 30s
+        group_interval: 5m
+        repeat_interval: 4h
+        routes:
+          - receiver: sre-agent
+            matchers: ['namespace="default"']
+
+  # GO-06: all rules scoped to the demo apps' namespace.
+  serverFiles:
+    alerting_rules.yml:
+      groups:
+        - name: sre-demo
+          rules:
+            - alert: PodCrashLooping
+              expr: increase(kube_pod_container_status_restarts_total{namespace="default"}[10m]) > 2
+              for: 1m
+              labels: {severity: warning}
+              annotations:
+                summary: "{{ $labels.pod }}/{{ $labels.container }} restarted {{ $value | humanize }} times in 10m"
+            - alert: PodWaitingBadState
+              expr: max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{namespace="default", reason=~"ImagePullBackOff|ErrImagePull|CrashLoopBackOff|CreateContainerConfigError"}) > 0
+              for: 2m
+              labels: {severity: warning}
+              annotations:
+                summary: "{{ $labels.pod }}/{{ $labels.container }} waiting: {{ $labels.reason }}"
+            - alert: ContainerOOMKilled
+              expr: |
+                max by (namespace, pod, container) (kube_pod_container_status_last_terminated_reason{namespace="default", reason="OOMKilled"}) > 0
+                and on (namespace, pod, container)
+                increase(kube_pod_container_status_restarts_total{namespace="default"}[10m]) > 0
+              labels: {severity: warning}
+              annotations:
+                summary: "{{ $labels.pod }}/{{ $labels.container }} was OOMKilled"
+            - alert: DeploymentReplicasMismatch
+              expr: kube_deployment_status_replicas_available{namespace="default"} < kube_deployment_spec_replicas{namespace="default"}
+              for: 5m
+              labels: {severity: warning}
+              annotations:
+                summary: "deployment {{ $labels.deployment }} has fewer available replicas than desired"

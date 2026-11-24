@@ -1,0 +1,33 @@
+# Wraps grafana-community/grafana 12.8.0. No secrets here (GO-03): the admin
+# login comes from the pre-created Secret `grafana-admin` (see README).
+grafana:
+  replicas: 1
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  persistence:
+    enabled: true
+    size: 2Gi
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 256Mi}
+  grafana.ini:
+    server:
+      root_url: "http://localhost:3000/"   # kubectl port-forward svc/grafana -n o11y 3000:80
+  # UIDs are fixed so skills/dashboards can reference them (GO-04).
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          uid: aftds3eabe7eoa
+          url: http://prometheus-server.o11y.svc.cluster.local
+          access: proxy
+          isDefault: true
+        - name: Loki
+          type: loki
+          uid: afsy81ikodqm8d
+          url: http://loki.o11y.svc.cluster.local:3100
+          access: proxy

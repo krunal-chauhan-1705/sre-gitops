@@ -1,0 +1,18 @@
+image:
+  repository: pulsar
+  tag: latest
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  port: 5001
+
+resources:
+  requests: {cpu: 10m, memory: 64Mi}
+  limits: {memory: 128Mi}
+
+# Every Nth call to /pulsar/pulse fails with an unhandled 500. 0 disables it.
+# Used to create a live voyager->pulsar dependency-error scenario for debugging drills.
+faultInjection:
+  failEvery: 0

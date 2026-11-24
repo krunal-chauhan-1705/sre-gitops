@@ -1,0 +1,6 @@
+apiVersion: v2
+name: loadgen
+description: Steady traffic to voyager so faults show up in logs and alerts
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
