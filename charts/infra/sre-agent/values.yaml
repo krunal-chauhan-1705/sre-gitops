@@ -31,9 +31,9 @@ agentEnv: &agentEnv
 langgraph-cloud:
   fullnameOverride: sre-agent        # sre-agent-api-server, sre-agent-queue, sre-agent-postgres, sre-agent-redis
   images:
-    apiServerImage:                  # langgraph dockerfile + minikube image build (sre-agent repo README)
+    apiServerImage:                  # `langgraph build` against minikube docker-env (sre-agents README)
       repository: sre-agent
-      tag: "0.1.1"
+      tag: "0.1.2"
       pullPolicy: IfNotPresent
   config:
     existingSecretName: sre-agent-secrets
