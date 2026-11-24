@@ -33,7 +33,7 @@ langgraph-cloud:
   images:
     apiServerImage:                  # `langgraph build` against minikube docker-env (sre-agents README)
       repository: sre-agent
-      tag: "0.1.3"
+      tag: "0.1.4"
       pullPolicy: IfNotPresent
   config:
     existingSecretName: sre-agent-secrets
@@ -63,7 +63,7 @@ langgraph-cloud:
       envFrom: *agentEnvFrom
       extraEnv: *agentEnv
       # The sre-gitops repo, kept in sync by git-sync and mounted READ-ONLY into the worker
-      # (where runs execute). The agent reads it as /gitops/main/...; fixes never write here,
+      # (where runs execute). The agent reads it as /gitops/...; fixes never write here,
       # they go through GitHub's API as PRs. Public repo: git-sync needs no credentials.
       volumes:
         - { name: gitops, emptyDir: { sizeLimit: 256Mi } }
