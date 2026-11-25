@@ -12,6 +12,14 @@ chatUi:
     requests: { cpu: 20m, memory: 96Mi }
     limits: { memory: 384Mi }
 
+# Slack (Phase 6). Socket Mode starts only when SLACK_SOCKET_MODE=true AND both tokens are in
+# sre-agent-secrets, so this is inert until the Slack app exists. IDs are not secret.
+slack:
+  socketMode: "true"
+  channelId: ""                     # C0... of #sre-agent
+  approverIds: ""                   # comma-separated Slack member IDs (U0...) allowed to approve
+  chatUiUrl: "http://localhost:3000"   # Agent Chat UI via port-forward; linked from Slack
+
 # Shared by the API pod and the queue worker (AS-04). Anchors keep the two lists identical.
 agentEnvFrom: &agentEnvFrom
   - secretRef: { name: sre-agent-secrets }
@@ -35,7 +43,7 @@ langgraph-cloud:
   images:
     apiServerImage:                  # `langgraph build` against minikube docker-env (sre-agents README)
       repository: sre-agent
-      tag: "0.1.8"
+      tag: "0.1.9"
       pullPolicy: IfNotPresent
   config:
     existingSecretName: sre-agent-secrets
@@ -48,7 +56,9 @@ langgraph-cloud:
       resources:
         requests: { cpu: 100m, memory: 256Mi }
         limits: { cpu: "1", memory: 768Mi }
-      envFrom: *agentEnvFrom
+      envFrom:                       # agentEnvFrom + the Slack ConfigMap (API pod only, AS-05)
+        - secretRef: { name: sre-agent-secrets }
+        - configMapRef: { name: sre-agent-slack }
       extraEnv: *agentEnv            # SLACK_SOCKET_MODE=true is added here in Phase 6 (AS-05), API only
       securityContext: { allowPrivilegeEscalation: false }
       # The chart's default probe execs `python /api/healthcheck.py`, which imports langgraph_api

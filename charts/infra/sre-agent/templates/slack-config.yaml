@@ -1,0 +1,11 @@
+# Slack settings (spec §8.3), loaded by the API pod ONLY via envFrom (AS-05): it holds the
+# Socket Mode connection. Not secret; the tokens live in sre-agent-secrets.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sre-agent-slack
+data:
+  SLACK_SOCKET_MODE: {{ .Values.slack.socketMode | quote }}
+  SLACK_CHANNEL_ID: {{ .Values.slack.channelId | quote }}
+  SLACK_APPROVER_IDS: {{ .Values.slack.approverIds | quote }}
+  CHAT_UI_URL: {{ .Values.slack.chatUiUrl | quote }}
