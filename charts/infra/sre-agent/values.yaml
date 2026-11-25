@@ -16,7 +16,7 @@ chatUi:
 # sre-agent-secrets, so this is inert until the Slack app exists. IDs are not secret.
 slack:
   socketMode: "true"
-  channelId: ""                     # C0... of #sre-agent
+  channelId: "C0CLW8EUPCZ"                   # C0... of #sre-agent
   approverIds: ""                   # comma-separated Slack member IDs (U0...) allowed to approve
   chatUiUrl: "http://localhost:3000"   # Agent Chat UI via port-forward; linked from Slack
 
