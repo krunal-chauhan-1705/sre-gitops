@@ -24,8 +24,8 @@ slack:
 agentEnvFrom: &agentEnvFrom
   - secretRef: { name: sre-agent-secrets }
 agentEnv: &agentEnv
-  - { name: MODEL, value: "particle-ai/particle-1:free" }              # gate G-3 (smoke test passed)
-  - { name: MODEL_FALLBACKS, value: "nvidia/nemotron-3-ultra-550b-a55b:free" }   # used on upstream 429
+  - { name: MODEL, value: "claude-haiku-5-5" }                         # Anthropic API (ANTHROPIC_API_KEY), effort MODEL_EFFORT
+  - { name: MODEL_FALLBACKS, value: "particle-ai/particle-1:free" }  # OpenRouter, used when Claude errors or hangs
   - { name: FIX_MODEL, value: "" }                                      # empty = MODEL
   - { name: GITOPS_REPO, value: krunal-chauhan-1705/sre-gitops }      # PRs + history via the GitHub API
   - { name: GRAFANA_MCP_URL, value: "http://mcp-grafana.o11y.svc.cluster.local:8000/mcp" }
@@ -43,7 +43,7 @@ langgraph-cloud:
   images:
     apiServerImage:                  # `langgraph build` against minikube docker-env (sre-agents README)
       repository: sre-agent
-      tag: "0.1.9"
+      tag: "0.1.10"
       pullPolicy: IfNotPresent
   config:
     existingSecretName: sre-agent-secrets
