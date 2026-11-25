@@ -33,7 +33,7 @@ langgraph-cloud:
   images:
     apiServerImage:                  # `langgraph build` against minikube docker-env (sre-agents README)
       repository: sre-agent
-      tag: "0.1.4"
+      tag: "0.1.5"
       pullPolicy: IfNotPresent
   config:
     existingSecretName: sre-agent-secrets
