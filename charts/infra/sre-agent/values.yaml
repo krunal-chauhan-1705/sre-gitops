@@ -17,7 +17,7 @@ chatUi:
 slack:
   socketMode: "true"
   channelId: "C0CLW8EUPCZ"                   # C0... of #sre-agent
-  approverIds: ""                   # comma-separated Slack member IDs (U0...) allowed to approve
+  approverIds: "U03P13Z9ZA4"                 # comma-separated Slack member IDs (U0...) allowed to approve
   chatUiUrl: "http://localhost:3000"   # Agent Chat UI via port-forward; linked from Slack
 
 # Shared by the API pod and the queue worker (AS-04). Anchors keep the two lists identical.
