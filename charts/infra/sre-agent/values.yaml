@@ -26,14 +26,16 @@ agentEnv: &agentEnv
   - { name: LANGSMITH_TRACING, value: "true" }
   - { name: LANGSMITH_PROJECT, value: sre-agent }
   - { name: LANGGRAPH_POSTGRES_POOL_MAX_SIZE, value: "10" }
-  - { name: BG_JOB_TIMEOUT_SECS, value: "900" }
+  - { name: BG_JOB_TIMEOUT_SECS, value: "600" }                # model calls are capped at 2x120s in code
+  - { name: LANGGRAPH_DEFAULT_RECURSION_LIMIT, value: "80" }    # Chat UI runs (alerts pass 80 themselves); server default 10011
+  - { name: LOG_JSON, value: "true" }                            # server logs as JSON for Loki
 
 langgraph-cloud:
   fullnameOverride: sre-agent        # sre-agent-api-server, sre-agent-queue, sre-agent-postgres, sre-agent-redis
   images:
     apiServerImage:                  # `langgraph build` against minikube docker-env (sre-agents README)
       repository: sre-agent
-      tag: "0.1.7"
+      tag: "0.1.8"
       pullPolicy: IfNotPresent
   config:
     existingSecretName: sre-agent-secrets
