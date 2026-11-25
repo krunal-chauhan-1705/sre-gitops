@@ -92,6 +92,7 @@ langgraph-cloud:
             - --link=main          # /git/main -> current commit (atomic symlink swap)
             - --depth=1
             - --period=30s
+            - --max-failures=-1    # default 0 exits on any failed fetch (52 restarts in one network blip); keeps the last good checkout
           volumeMounts:
             - { name: gitops, mountPath: /git }
           resources:
