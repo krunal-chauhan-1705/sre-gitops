@@ -15,4 +15,4 @@ resources:
 # Every Nth call to /pulsar/pulse fails with an unhandled 500. 0 disables it.
 # Used to create a live voyager->pulsar dependency-error scenario for debugging drills.
 faultInjection:
-  failEvery: 0
+  failEvery: 3
