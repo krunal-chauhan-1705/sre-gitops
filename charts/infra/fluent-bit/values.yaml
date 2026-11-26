@@ -26,6 +26,26 @@ fluent-bit:
       [INPUT]
           Name kubernetes_events
           Tag k8s_events
+    filters: |
+      [FILTER]
+          Name kubernetes
+          Match kube.*
+          Merge_Log On
+          Keep_Log Off
+          K8S-Logging.Parser On
+          K8S-Logging.Exclude On
+
+      # Keep only what diagnosis needs: the full Event (managedFields etc.) is ~1.5 KB of noise per line.
+      [FILTER]
+          Name record_modifier
+          Match k8s_events
+          Allowlist_key involvedObject
+          Allowlist_key reason
+          Allowlist_key message
+          Allowlist_key type
+          Allowlist_key count
+          Allowlist_key firstTimestamp
+          Allowlist_key lastTimestamp
     outputs: |
       [OUTPUT]
           Name loki
