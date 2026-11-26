@@ -34,53 +34,151 @@ prometheus:
             - url: http://sre-agent-api-server.sre-agent.svc.cluster.local/alertmanager
               send_resolved: false
       route:
-        receiver: "null"
+        receiver: sre-agent              # every namespace and the node: the agent diagnoses all, PRs only for its fixable charts
         group_by: [alertname, namespace]
         group_wait: 30s
         group_interval: 5m
         repeat_interval: 4h
-        routes:
-          - receiver: sre-agent
-            matchers: ['namespace=~"default|o11y"']   # apps + monitoring stack
 
-  # GO-06: rules cover the demo apps (default) and the o11y stack, both diagnosable by the agent.
+  # Rules cover every namespace and the node; Kubernetes events are alerted on by the Loki ruler.
   serverFiles:
     alerting_rules.yml:
       groups:
         - name: sre-demo
           rules:
             - alert: PodCrashLooping
-              expr: increase(kube_pod_container_status_restarts_total{namespace=~"default|o11y"}[10m]) > 2
+              expr: increase(kube_pod_container_status_restarts_total[10m]) > 2
               for: 1m
               labels: {severity: warning}
               annotations:
                 summary: "{{ $labels.pod }}/{{ $labels.container }} restarted {{ $value | humanize }} times in 10m"
             - alert: PodWaitingBadState
-              expr: max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{namespace=~"default|o11y", reason=~"ImagePullBackOff|ErrImagePull|CrashLoopBackOff|CreateContainerConfigError"}) > 0
+              expr: max by (namespace, pod, container, reason) (kube_pod_container_status_waiting_reason{reason=~"ImagePullBackOff|ErrImagePull|CrashLoopBackOff|CreateContainerConfigError"}) > 0
               for: 2m
               labels: {severity: warning}
               annotations:
                 summary: "{{ $labels.pod }}/{{ $labels.container }} waiting: {{ $labels.reason }}"
             - alert: ContainerOOMKilled
               expr: |
-                max by (namespace, pod, container) (kube_pod_container_status_last_terminated_reason{namespace=~"default|o11y", reason="OOMKilled"}) > 0
+                max by (namespace, pod, container) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled"}) > 0
                 and on (namespace, pod, container)
-                increase(kube_pod_container_status_restarts_total{namespace=~"default|o11y"}[10m]) > 0
+                increase(kube_pod_container_status_restarts_total[10m]) > 0
               labels: {severity: warning}
               annotations:
                 summary: "{{ $labels.pod }}/{{ $labels.container }} was OOMKilled"
             - alert: PodPending
-              expr: max by (namespace, pod) (kube_pod_status_phase{namespace=~"default|o11y", phase="Pending"}) > 0
+              expr: max by (namespace, pod) (kube_pod_status_phase{phase="Pending"}) > 0
               for: 5m
               labels: {severity: warning}
               annotations:
                 summary: "{{ $labels.pod }} has been Pending for 5m (unschedulable or volume not bound)"
             - alert: DeploymentReplicasMismatch
-              expr: kube_deployment_status_replicas_available{namespace=~"default|o11y"} < kube_deployment_spec_replicas{namespace=~"default|o11y"}
+              expr: kube_deployment_status_replicas_available < kube_deployment_spec_replicas
               for: 5m
               labels: {severity: warning}
               annotations:
                 summary: "deployment {{ $labels.deployment }} has fewer available replicas than desired"
+        - name: cluster
+          rules:
+            # Node (kube-state-metrics conditions, node-exporter resources)
+            - alert: NodeNotReady
+              expr: max by (node) (kube_node_status_condition{condition="Ready", status!="true"}) == 1
+              for: 2m
+              labels: {severity: critical}
+              annotations: {summary: "node {{ $labels.node }} is not Ready"}
+            - alert: NodePressure
+              expr: max by (node, condition) (kube_node_status_condition{condition=~"MemoryPressure|DiskPressure|PIDPressure", status="true"}) == 1
+              for: 2m
+              labels: {severity: warning}
+              annotations: {summary: "node {{ $labels.node }} reports {{ $labels.condition }}"}
+            - alert: NodeUnschedulable
+              expr: max by (node) (kube_node_spec_unschedulable) == 1
+              for: 10m
+              labels: {severity: warning}
+              annotations: {summary: "node {{ $labels.node }} is cordoned (unschedulable) for 10m"}
+            - alert: NodeMemoryHigh
+              expr: max by (instance) (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 0.9
+              for: 10m
+              labels: {severity: warning}
+              annotations: {summary: "node {{ $labels.instance }} memory {{ $value | humanizePercentage }} used"}
+            - alert: NodeCPUHigh
+              expr: 1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) > 0.9
+              for: 15m
+              labels: {severity: warning}
+              annotations: {summary: "node {{ $labels.instance }} CPU {{ $value | humanizePercentage }} busy for 15m"}
+            - alert: NodeDiskSpaceLow
+              expr: min by (instance, device) (node_filesystem_avail_bytes{fstype=~"ext4|xfs|btrfs"} / node_filesystem_size_bytes{fstype=~"ext4|xfs|btrfs"}) < 0.10
+              for: 10m
+              labels: {severity: warning}
+              annotations: {summary: "node {{ $labels.instance }} disk {{ $labels.device }} has {{ $value | humanizePercentage }} free"}
+            - alert: NodeDiskFillingIn6h
+              expr: min by (instance, device) (predict_linear(node_filesystem_avail_bytes{fstype=~"ext4|xfs|btrfs"}[6h], 6 * 3600)) < 0
+              for: 30m
+              labels: {severity: warning}
+              annotations: {summary: "node {{ $labels.instance }} disk {{ $labels.device }} will be full within 6h at the current rate"}
+            # Workloads (all namespaces)
+            - alert: StatefulSetReplicasMismatch
+              expr: max by (namespace, statefulset) (kube_statefulset_status_replicas_ready != kube_statefulset_status_replicas)
+              for: 5m
+              labels: {severity: warning}
+              annotations: {summary: "statefulset {{ $labels.namespace }}/{{ $labels.statefulset }} has replicas not ready"}
+            - alert: DaemonSetUnavailable
+              expr: max by (namespace, daemonset) (kube_daemonset_status_number_unavailable) > 0
+              for: 5m
+              labels: {severity: warning}
+              annotations: {summary: "daemonset {{ $labels.namespace }}/{{ $labels.daemonset }} has {{ $value }} unavailable pods"}
+            - alert: DeploymentRolloutStuck
+              expr: max by (namespace, deployment) (kube_deployment_status_condition{condition="Progressing", status="false"}) == 1
+              for: 2m
+              labels: {severity: warning}
+              annotations: {summary: "deployment {{ $labels.namespace }}/{{ $labels.deployment }} exceeded its progress deadline"}
+            - alert: PodNotReady
+              expr: |
+                max by (namespace, pod, container) (kube_pod_container_status_ready == 0)
+                and on (namespace, pod, container) max by (namespace, pod, container) (kube_pod_container_status_running == 1)
+              for: 10m
+              labels: {severity: warning}
+              annotations: {summary: "{{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) is running but not Ready for 10m (failing readiness probe)"}
+            - alert: PodFailedOrEvicted
+              expr: max by (namespace, pod, reason) (kube_pod_status_reason{reason=~"Evicted|NodeLost|UnexpectedAdmissionError|Shutdown"}) == 1 or max by (namespace, pod) (kube_pod_status_phase{phase="Failed"}) == 1
+              for: 1m
+              labels: {severity: warning}
+              annotations: {summary: "pod {{ $labels.namespace }}/{{ $labels.pod }} failed {{ $labels.reason }}"}
+            - alert: JobFailed
+              expr: max by (namespace, job_name) (kube_job_status_failed) > 0
+              labels: {severity: warning}
+              annotations: {summary: "job {{ $labels.namespace }}/{{ $labels.job_name }} failed"}
+            # Storage
+            - alert: PersistentVolumeClaimPending
+              expr: max by (namespace, persistentvolumeclaim) (kube_persistentvolumeclaim_status_phase{phase="Pending"}) == 1
+              for: 5m
+              labels: {severity: warning}
+              annotations: {summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} is Pending"}
+            - alert: PersistentVolumeFailed
+              expr: max by (persistentvolume, phase) (kube_persistentvolume_status_phase{phase=~"Failed|Pending"}) == 1
+              for: 5m
+              labels: {severity: warning}
+              annotations: {summary: "PV {{ $labels.persistentvolume }} is {{ $labels.phase }}"}
+            # Control plane and the monitoring pipeline itself
+            - alert: KubeAPIErrorsHigh
+              expr: sum(rate(apiserver_request_total{code=~"5.."}[5m])) / sum(rate(apiserver_request_total[5m])) > 0.05
+              for: 10m
+              labels: {severity: critical}
+              annotations: {summary: "API server 5xx ratio {{ $value | humanizePercentage }}"}
+            - alert: TargetDown
+              expr: max by (job, instance, namespace, service) (up) == 0
+              for: 5m
+              labels: {severity: warning}
+              annotations: {summary: "Prometheus cannot scrape {{ $labels.job }} {{ $labels.service }} {{ $labels.instance }}"}
+            - alert: KubeStateMetricsMissing
+              expr: absent(up{service="prometheus-kube-state-metrics"} == 1)
+              for: 5m
+              labels: {severity: critical, namespace: o11y}
+              annotations: {summary: "kube-state-metrics is not being scraped: every pod/node state alert is blind"}
+            - alert: PrometheusRuleFailures
+              expr: increase(prometheus_rule_evaluation_failures_total[10m]) > 0
+              labels: {severity: warning, namespace: o11y}
+              annotations: {summary: "Prometheus rule evaluations are failing ({{ $labels.rule_group }})"}
         # App resource alerts for pulsar and voyager. One alert name per signal, `app` label per app:
         # a pulsar fault that also hurts voyager stays ONE incident (Alertmanager groups by alertname).
         # cAdvisor on this minikube (Docker runtime) only has pod-level series, so match by pod.
