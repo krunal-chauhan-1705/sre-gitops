@@ -81,3 +81,27 @@ prometheus:
               labels: {severity: warning}
               annotations:
                 summary: "deployment {{ $labels.deployment }} has fewer available replicas than desired"
+        # App resource alerts for pulsar and voyager. One alert name per signal, `app` label per app:
+        # a pulsar fault that also hurts voyager stays ONE incident (Alertmanager groups by alertname).
+        # cAdvisor on this minikube (Docker runtime) only has pod-level series, so match by pod.
+        - name: apps
+          rules:
+            - alert: AppMemoryHigh
+              expr: |
+                label_replace(
+                  max by (namespace, pod) (container_memory_working_set_bytes{namespace="default", pod=~"(pulsar|voyager)-.*"})
+                  / max by (namespace, pod) (kube_pod_container_resource_limits{namespace="default", resource="memory", container=~"pulsar|voyager"}),
+                  "app", "$1", "pod", "(pulsar|voyager)-.*") > 0.85
+              for: 5m
+              labels: {severity: warning}
+              annotations:
+                summary: "{{ $labels.app }} ({{ $labels.pod }}) is using {{ $value | humanizePercentage }} of its memory limit"
+            - alert: AppCPUHigh
+              expr: |
+                label_replace(
+                  max by (namespace, pod) (rate(container_cpu_usage_seconds_total{namespace="default", pod=~"(pulsar|voyager)-.*"}[5m])),
+                  "app", "$1", "pod", "(pulsar|voyager)-.*") > 0.2
+              for: 10m
+              labels: {severity: warning}
+              annotations:
+                summary: "{{ $labels.app }} ({{ $labels.pod }}) has used {{ $value | humanize }} CPU cores for 10m (normal is ~0.005, request 0.01)"

@@ -12,7 +12,7 @@ data:
         rules:
           - alert: AppErrorLogs
             expr: |
-              sum by (kubernetes_container_name) (count_over_time({kubernetes_namespace_name="default"} |~ "Traceback|\" 50[0-9] " [5m])) > 3
+              label_replace(sum by (kubernetes_container_name) (count_over_time({kubernetes_namespace_name="default", kubernetes_container_name=~"pulsar|voyager"} |~ "Traceback|\" 50[0-9] " [5m])), "app", "$1", "kubernetes_container_name", "(.*)") > 3
             for: 1m
             labels:
               severity: warning
