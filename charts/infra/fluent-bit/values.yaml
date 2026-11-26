@@ -1,9 +1,31 @@
-# Wraps fluent/fluent-bit 0.57.9. Default inputs + kubernetes filter; output -> Loki.
+# Wraps fluent/fluent-bit 0.57.9. Container logs (tail) + Kubernetes events -> Loki.
+# Events make Grafana the agent's single source for logs, metrics and events (no Kubernetes MCP).
 fluent-bit:
+  rbac:
+    eventsAccess: true   # get/list/watch events for the kubernetes_events input
   resources:
     requests: {cpu: 20m, memory: 32Mi}
     limits: {memory: 128Mi}
   config:
+    inputs: |
+      [INPUT]
+          Name tail
+          Path /var/log/containers/*.log
+          multiline.parser docker, cri
+          Tag kube.*
+          Mem_Buf_Limit 5MB
+          Skip_Long_Lines On
+
+      [INPUT]
+          Name systemd
+          Tag host.*
+          Systemd_Filter _SYSTEMD_UNIT=kubelet.service
+          Read_From_Tail On
+
+      # ponytail: every DaemonSet pod watches all events; dedupe or move to one pod on multi-node
+      [INPUT]
+          Name kubernetes_events
+          Tag k8s_events
     outputs: |
       [OUTPUT]
           Name loki
@@ -11,3 +33,10 @@ fluent-bit:
           Host loki.o11y.svc.cluster.local
           Port 3100
           Labels job=fluentbit, $kubernetes['namespace_name'], $kubernetes['pod_name'], $kubernetes['container_name']
+
+      [OUTPUT]
+          Name loki
+          Match k8s_events
+          Host loki.o11y.svc.cluster.local
+          Port 3100
+          Labels job=k8s-events, $involvedObject['namespace'], $involvedObject['kind'], $type, $reason
