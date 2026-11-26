@@ -30,7 +30,6 @@ agentEnv: &agentEnv
   - { name: GITOPS_REPO, value: krunal-chauhan-1705/sre-gitops }      # PRs + history via the GitHub API
   - { name: PR_REVIEWERS, value: krunal-chauhan-1705 }               # assigned on every fix PR; review requested unless they are the PR author
   - { name: GRAFANA_MCP_URL, value: "http://mcp-grafana.o11y.svc.cluster.local:8000/mcp" }
-  - { name: K8S_MCP_URL, value: "http://mcp-kubernetes.o11y.svc.cluster.local:8080/mcp" }
   - { name: AGENT_EVENTS_URL, value: "http://sre-agent-api-server.sre-agent.svc.cluster.local/agent-events" }
   - { name: LANGSMITH_TRACING, value: "true" }
   - { name: LANGSMITH_PROJECT, value: sre-agent }
@@ -44,7 +43,7 @@ langgraph-cloud:
   images:
     apiServerImage:                  # `langgraph build` against minikube docker-env (sre-agents README)
       repository: sre-agent
-      tag: "0.1.14"
+      tag: "0.1.15"
       pullPolicy: IfNotPresent
   config:
     existingSecretName: sre-agent-secrets

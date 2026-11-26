@@ -3,6 +3,7 @@ kind: Application
 metadata:
   name: kubernetes-mcp
   namespace: argocd
+  finalizers: [resources-finalizer.argocd.argoproj.io]   # delete its resources with the app
 spec:
   project: default
   source:
