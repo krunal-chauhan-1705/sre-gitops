@@ -33,6 +33,22 @@ prometheus:
           webhook_configs:
             - url: http://sre-agent-api-server.sre-agent.svc.cluster.local/alertmanager
               send_resolved: false
+      # One fault = one incident: when the specific alert fires, mute the alerts derived from it.
+      inhibit_rules:
+        - source_matchers: ['alertname="PodWaitingBadState"']          # stuck container (image, config, crashloop)
+          target_matchers: ['alertname=~"PodPending|PodNotReady|PodCrashLooping"']
+          equal: [namespace, pod]
+        - source_matchers: ['alertname="PodWaitingBadState"']          # its owner's replica/rollout alerts
+          target_matchers: ['alertname=~"DaemonSetUnavailable|DeploymentReplicasMismatch|DeploymentRolloutStuck|StatefulSetReplicasMismatch"']
+          equal: [namespace]
+        - source_matchers: ['alertname="ContainerOOMKilled"']
+          target_matchers: ['alertname=~"PodCrashLooping|PodNotReady|PodWaitingBadState|PodMemoryNearLimit"']
+          equal: [namespace, pod]
+        - source_matchers: ['alertname="NodeNotReady"']                # single node: the node is the cause
+          target_matchers: ['alertname=~"Pod.*|Container.*|Deployment.*|StatefulSet.*|DaemonSet.*|AppErrorLogs|KubeWarningEvents|TargetDown"']
+        - source_matchers: ['alertname="KubeStateMetricsMissing"']
+          target_matchers: ['alertname="TargetDown"', 'service="prometheus-kube-state-metrics"']
+
       route:
         receiver: sre-agent              # every namespace and the node: the agent diagnoses all, PRs only for its fixable charts
         group_by: [alertname, namespace]
