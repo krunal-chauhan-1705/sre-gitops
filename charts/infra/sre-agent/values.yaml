@@ -66,13 +66,20 @@ langgraph-cloud:
       # (60 restarts). Same GET /ok without that import: 40-230ms. Stays an `exec` handler on
       # purpose: ArgoCD's Helm 4 keeps the chart's default exec even with `exec: null`, and two
       # handlers on one probe are rejected by the API server.
-      startupProbe: &apiProbe
+      # Startup gets 5 min: the graph import (MCP tool load) took ~60s on a busy node, exactly the
+      # old 6x10s window, so the pod was killed just as it became ready (crash loop, 2026-11-26).
+      startupProbe:
         exec:
-          command: [python, -c, "import urllib.request as u; u.urlopen('http://localhost:8000/ok', timeout=2)"]
+          command: [python, -c, "import urllib.request as u; u.urlopen('http://localhost:8000/ok', timeout=4)"]
         periodSeconds: 10
-        timeoutSeconds: 3
+        timeoutSeconds: 5
+        failureThreshold: 30
+      readinessProbe: &apiProbe
+        exec:
+          command: [python, -c, "import urllib.request as u; u.urlopen('http://localhost:8000/ok', timeout=4)"]
+        periodSeconds: 10
+        timeoutSeconds: 5
         failureThreshold: 6
-      readinessProbe: *apiProbe
       livenessProbe: *apiProbe
     pdb:
       enabled: false
