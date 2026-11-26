@@ -1,0 +1,302 @@
+{{/*
+Expand the name of the chart.
+*/}}
+{{- define "langGraphCloud.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Create a default fully qualified app name.
+We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
+If release name contains chart name it will be used as a full name.
+*/}}
+{{- define "langGraphCloud.fullname" -}}
+{{- if .Values.fullnameOverride }}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- $name := default .Chart.Name .Values.nameOverride }}
+{{- if contains $name .Release.Name }}
+{{- .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+Create chart name and version as used by the chart label.
+*/}}
+{{- define "langGraphCloud.chart" -}}
+{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Common labels
+*/}}
+{{- define "langGraphCloud.labels" -}}
+{{- if .Values.commonLabels }}
+{{ toYaml .Values.commonLabels }}
+{{- end }}
+helm.sh/chart: {{ include "langGraphCloud.chart" . }}
+{{ include "langGraphCloud.selectorLabels" . }}
+{{- if .Chart.AppVersion }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- end }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end }}
+
+{{/*
+Common annotations
+*/}}
+{{- define "langGraphCloud.annotations" -}}
+{{- if .Values.commonAnnotations }}
+{{ toYaml .Values.commonAnnotations }}
+{{- end }}
+helm.sh/chart: {{ include "langGraphCloud.chart" . }}
+{{ include "langGraphCloud.selectorLabels" . }}
+{{- if .Chart.AppVersion }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+{{- end }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- end }}
+
+{{/*
+Selector labels
+*/}}
+{{- define "langGraphCloud.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "langGraphCloud.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
+{{/*
+Name of the secret containing the secrets for this chart. This can be overriden by a secrets file created by
+the user or some other secret provisioning mechanism
+*/}}
+{{- define "langGraphCloud.secretsName" -}}
+{{- if .Values.config.existingSecretName }}
+{{- .Values.config.existingSecretName }}
+{{- else }}
+{{- include "langGraphCloud.fullname" . }}-secrets
+{{- end }}
+{{- end }}
+
+{{/*
+Name of the secret containing the secrets for postgres. This can be overriden by a secrets file created by
+the user or some other secret provisioning mechanism
+*/}}
+{{- define "langGraphCloud.postgresSecretsName" -}}
+{{- if .Values.postgres.external.existingSecretName }}
+{{- .Values.postgres.external.existingSecretName }}
+{{- else }}
+{{- include "langGraphCloud.fullname" . }}-postgres
+{{- end }}
+{{- end }}
+
+{{/*
+Name of the secret containing the secrets for redis. This can be overriden by a secrets file created by
+the user or some other secret provisioning mechanism
+*/}}
+{{- define "langGraphCloud.redisSecretsName" -}}
+{{- if .Values.redis.external.existingSecretName }}
+{{- .Values.redis.external.existingSecretName }}
+{{- else }}
+{{- include "langGraphCloud.fullname" . }}-redis
+{{- end }}
+{{- end }}
+
+{{/*
+Common DNS configuration for all pods. When commonDnsConfig is set, it will be applied to all pods.
+*/}}
+{{- define "langGraphCloud.dnsConfig" -}}
+{{- if .Values.commonDnsConfig }}
+dnsConfig:
+  {{- toYaml .Values.commonDnsConfig | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
+Name of the secret containing the MongoDB URI for the optional Mongo checkpointer default.
+*/}}
+{{- define "langGraphCloud.mongoSecretsName" -}}
+{{- if and .Values.mongo.external.enabled .Values.mongo.external.existingSecretName }}
+{{- .Values.mongo.external.existingSecretName }}
+{{- else }}
+{{- include "langGraphCloud.fullname" . }}-mongo
+{{- end }}
+{{- end }}
+
+{{/*
+Name of the Service backing the chart-managed MongoDB instance.
+*/}}
+{{- define "langGraphCloud.mongoServiceName" -}}
+{{- include "langGraphCloud.fullname" . }}-mongo
+{{- end }}
+
+{{/*
+Stable DNS name for the primary member of the chart-managed single-node MongoDB replica set.
+*/}}
+{{- define "langGraphCloud.mongoPrimaryHost" -}}
+{{- printf "%s.%s.svc.%s:%v" (include "langGraphCloud.mongoServiceName" .) (default .Release.Namespace .Values.namespace) .Values.clusterDomain 27017 -}}
+{{- end }}
+
+{{/*
+MongoDB connection URL used by the chart-managed checkpointer default.
+*/}}
+{{- define "langGraphCloud.mongoConnectionUrl" -}}
+{{- if and .Values.mongo.enabled (not .Values.mongo.external.enabled) -}}
+{{- printf "mongodb://%s/langgraph?replicaSet=rs0" (include "langGraphCloud.mongoPrimaryHost" .) -}}
+{{- else -}}
+{{- .Values.mongo.external.connectionUrl -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Validates MongoDB provisioning and default-checkpointer settings.
+Set config.skipValidation to true to bypass these checks (e.g. for helm template verification).
+*/}}
+{{- define "langGraphCloud.validateMongoConfiguration" -}}
+{{- if not .Values.config.skipValidation -}}
+{{- if and (hasKey .Values.mongo "resources") (not (empty .Values.mongo.resources)) -}}
+{{- fail "mongo.resources has moved to mongo.statefulSet.resources; update your values file to use the new path" -}}
+{{- end -}}
+{{- if and (hasKey .Values.mongo "persistence") (not (empty .Values.mongo.persistence)) -}}
+{{- fail "mongo.persistence has moved to mongo.statefulSet.persistence; update your values file to use the new path" -}}
+{{- end -}}
+{{- if and (not .Values.mongo.enabled) .Values.mongo.external.enabled -}}
+{{- fail "mongo.external.enabled requires mongo.enabled=true" -}}
+{{- end -}}
+{{- if and .Values.mongo.external.enabled (not .Values.mongo.external.existingSecretName) (empty .Values.mongo.external.connectionUrl) -}}
+{{- fail "mongo.external.connectionUrl must be set or mongo.external.existingSecretName must be provided when mongo.external.enabled=true" -}}
+{{- end -}}
+{{- if and .Values.mongo.enabled (not .Values.mongo.external.enabled) (empty .Values.mongo.statefulSet.persistence.size) -}}
+{{- fail "mongo.statefulSet.persistence.size must be set when mongo.enabled=true and using the bundled MongoDB instance" -}}
+{{- end -}}
+{{- end -}}{{- /* end skipValidation */ -}}
+{{- end }}
+
+{{/*
+Environment variables used to default agent server checkpointers without overriding app-level LANGGRAPH_CHECKPOINTER.
+*/}}
+{{- define "langGraphCloud.checkpointerEnv" -}}
+{{- $root := .root | default . -}}
+{{- include "langGraphCloud.validateMongoConfiguration" $root -}}
+{{- if $root.Values.mongo.enabled }}
+- name: LS_DEFAULT_CHECKPOINTER_BACKEND
+  value: "mongo"
+- name: LS_MONGODB_URI
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "langGraphCloud.mongoSecretsName" $root }}
+      key: mongodb_connection_url
+{{- end }}
+{{- end }}
+{{- define "apiServer.serviceAccountName" -}}
+{{- if .Values.apiServer.serviceAccount.create -}}
+    {{ default (printf "%s-%s" (include "langGraphCloud.fullname" .) .Values.apiServer.name) .Values.apiServer.serviceAccount.name | trunc 63 | trimSuffix "-" }}
+{{- else -}}
+    {{ default "default" .Values.apiServer.serviceAccount.name }}
+{{- end -}}
+{{- end -}}
+
+{{- define "queue.serviceAccountName" -}}
+{{- if .Values.queue.serviceAccount.create -}}
+    {{ default (printf "%s-%s" (include "langGraphCloud.fullname" .) .Values.queue.name) .Values.queue.serviceAccount.name | trunc 63 | trimSuffix "-" }}
+{{- else -}}
+    {{ default "default" .Values.queue.serviceAccount.name }}
+{{- end -}}
+{{- end -}}
+
+{{- define "postgres.serviceAccountName" -}}
+{{- if .Values.postgres.serviceAccount.create -}}
+    {{ default (printf "%s-%s" (include "langGraphCloud.fullname" .) .Values.postgres.name) .Values.postgres.serviceAccount.name | trunc 63 | trimSuffix "-" }}
+{{- else -}}
+    {{ default "default" .Values.postgres.serviceAccount.name }}
+{{- end -}}
+{{- end -}}
+
+{{- define "redis.serviceAccountName" -}}
+{{- if .Values.redis.serviceAccount.create -}}
+    {{ default (printf "%s-%s" (include "langGraphCloud.fullname" .) .Values.redis.name) .Values.redis.serviceAccount.name | trunc 63 | trimSuffix "-" }}
+{{- else -}}
+    {{ default "default" .Values.redis.serviceAccount.name }}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Validates that at most one ingress mechanism is enabled and that required fields are set.
+Set config.skipValidation to true to bypass these checks (e.g. for Ingress + Gateway
+coexistence or helm template verification).
+*/}}
+{{- define "langGraphCloud.validateIngress" -}}
+{{- if not .Values.config.skipValidation -}}
+{{- $enabledCount := 0 -}}
+{{- if .Values.ingress.enabled }}{{ $enabledCount = add1 $enabledCount }}{{- end -}}
+{{- if .Values.gateway.enabled }}{{ $enabledCount = add1 $enabledCount }}{{- end -}}
+{{- if .Values.istioGateway.enabled }}{{ $enabledCount = add1 $enabledCount }}{{- end -}}
+{{- if gt $enabledCount 1 }}
+{{- fail "Only one of ingress, gateway, or istioGateway can be enabled at the same time." -}}
+{{- end -}}
+{{- if and .Values.gateway.enabled (empty .Values.gateway.name) }}
+{{- fail "gateway.name must be set when gateway.enabled=true" -}}
+{{- end -}}
+{{- if and .Values.istioGateway.enabled (empty .Values.istioGateway.name) }}
+{{- fail "istioGateway.name must be set when istioGateway.enabled=true" -}}
+{{- end -}}
+{{- if and .Values.ingress.enabled (empty .Values.ingress.hostname) }}
+{{- fail "ingress.hostname must be set when ingress.enabled=true" -}}
+{{- end -}}
+{{- end -}}{{- /* end skipValidation */ -}}
+{{- end -}}
+
+{{/*
+Normalizes a basePath value by stripping leading and trailing slashes.
+*/}}
+{{- define "langGraphCloud.normalizeBasePath" -}}
+{{- . | trimPrefix "/" | trimSuffix "/" -}}
+{{- end -}}
+
+{{/*
+FQDN for the api-server Service inside the cluster.
+*/}}
+{{- define "langGraphCloud.apiServerHost" -}}
+{{- printf "%s-%s.%s.svc.%s" (include "langGraphCloud.fullname" .) .Values.apiServer.name (.Values.namespace | default .Release.Namespace) .Values.clusterDomain -}}
+{{- end -}}
+
+{{/*
+Creates the image reference used for LangGraph Cloud deployments. If registry is specified, concatenate it, along with a '/'.
+*/}}
+{{- define "langGraphCloud.image" -}}
+{{- $imageConfig := index .Values.images .component -}}
+{{- if .Values.images.registry -}}
+{{ .Values.images.registry }}/{{ $imageConfig.repository }}:{{ $imageConfig.tag | default .Chart.AppVersion }}
+{{- else -}}
+{{ $imageConfig.repository }}:{{ $imageConfig.tag | default .Chart.AppVersion }}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Redis args capping its memory at 75% of the container memory limit, with
+noeviction: a full Redis refuses writes with OOM errors until keys expire,
+instead of being OOM-killed and restarting empty, which drops queued runs and
+open streams. The other quarter is headroom for a write that starts under the
+cap and runs past it, and for allocator fragmentation. Takes the container's
+resources. Renders nothing without a memory limit, since there is nothing to
+size the cap from. Values numbers arrive as float64, --set integers as int64.
+*/}}
+{{- define "langGraphCloud.redisMaxMemoryArgs" -}}
+{{- $limit := dig "limits" "memory" "" (default (dict) .) -}}
+{{- $bytes := 0.0 -}}
+{{- if or (kindIs "float64" $limit) (kindIs "int64" $limit) (kindIs "int" $limit) -}}
+{{- $bytes = float64 $limit -}}
+{{- else if $limit -}}
+{{- $suffix := regexFind "(Ki|Mi|Gi|Ti|Pi|Ei|m|k|M|G|T|P|E)$" $limit -}}
+{{- $units := dict "" 1 "m" 0.001 "k" 1e3 "M" 1e6 "G" 1e9 "T" 1e12 "P" 1e15 "E" 1e18 "Ki" 1024 "Mi" 1048576 "Gi" 1073741824 "Ti" 1099511627776 "Pi" 1125899906842624 "Ei" 1152921504606846976 -}}
+{{- $bytes = mulf (trimSuffix $suffix $limit) (index $units $suffix) -}}
+{{- end -}}
+{{- if gt $bytes 0.0 -}}
+- --maxmemory
+- {{ mulf $bytes 0.75 | floor | int64 | quote }}
+- --maxmemory-policy
+- noeviction
+{{- end -}}
+{{- end -}}

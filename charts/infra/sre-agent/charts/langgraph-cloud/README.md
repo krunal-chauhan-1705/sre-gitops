@@ -1,0 +1,640 @@
+# langgraph-cloud
+
+![Version: 0.3.5](https://img.shields.io/badge/Version-0.3.5-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.2.3](https://img.shields.io/badge/AppVersion-0.2.3-informational?style=flat-square)
+
+Helm chart to deploy the LangGraph Cloud application and all services it depends on.
+
+## Local Development
+
+For a safe disposable `kind` workflow, see [LOCAL_DEVELOPMENT.md](./LOCAL_DEVELOPMENT.md).
+
+## Deploying LangGraph Cloud with Helm
+
+### Prerequisites
+
+Ensure you have the following tools/items ready.
+
+1. A working Kubernetes cluster that you can access via `kubectl`
+    1. Recommended: Atleast 1 vCPUs, 4GB Memory available
+        1. You may need to tune resource requests/limits for all of our different services based off of organization size/usage
+    1. Valid Dynamic PV provisioner or PVs available on your cluster. You can verify this by running:
+
+        ```jsx
+        kubectl get storageclass
+        ```
+1. `Helm`
+    1. `brew install helm`
+1. LangGraph Cloud License Key (optional)
+    1. You can get this from your LangChain representative. Contact us at sales@langchain.dev for more information.
+1. LangSmith API Key (optional)
+    1. Use this if your deployment needs LangSmith access. It is mounted as `LANGSMITH_API_KEY`.
+1. A LangGraph Cloud API image
+    1. You can use the [langgraph-cli](https://langchain-ai.github.io/langgraph/cloud/reference/cli/) to build your own image.
+1. SSL(optional)
+    1. This should be attachable to a load balancer that the chart will provision
+1. External Postgres(optional).
+    1. You can configure external Postgres using the `values.yaml` file. You will need to provide a connection url for your postgres.
+    2. We only official support Postgres versions >= 14.
+
+### Configure your Helm Charts:
+
+1. Create a new of `langgraph_cloud_config.yaml` file to contain your configuration.
+1. Override any values in the file. Refer to the `values.yaml` documentation below to see all configurable values. Some values we recommend tuning:
+    1. Resources
+    1. SSL
+        1. Add an annotation to the `apiServer.service` object to tell your cloud provider to provision a load balancer with said certificate attached.
+        2. This will vary based on your cloud provider. Refer to their documentation for more information.
+    1. License/API Keys
+    1. A LangGraph Cloud API image. You can use the [langgraph-cli](https://langchain-ai.github.io/langgraph/cloud/reference/cli/) to build your own image.
+
+Bare minimum config file `langgraph_cloud_config.yaml`:
+
+```yaml
+images:
+  # Make sure to replace this with your own LangGraph Cloud API image built with the cli.
+  apiServerImage:
+    pullPolicy: IfNotPresent
+    repository: <your repository>
+    tag: <image tag>
+
+config:
+  langGraphCloudLicenseKey: ""
+  apiKey: ""
+```
+
+If your application reads from environment variables, specify `apiServer.deployment.extraEnv`:
+
+```yaml
+images:
+  # Make sure to replace this with your own LangGraph Cloud API image built with the cli.
+  apiServerImage:
+    pullPolicy: IfNotPresent
+    repository: <your repository>
+    tag: <image tag>
+
+config:
+  langGraphCloudLicenseKey: ""
+  apiKey: ""
+
+apiServer:
+  deployment:
+    extraEnv:
+      - name: ENV_VAR_1
+        value: "foo"
+      - name: ENV_VAR_2
+        value: "bar"
+```
+
+Example `EKS` config file with certificates setup using ACM:
+
+```jsx
+images:
+  # Make sure to replace this with your own LangGraph Cloud API image built with the cli.
+  apiServerImage:
+    pullPolicy: IfNotPresent
+    repository: <your repository>
+    tag: <image tag>
+
+config:
+  langGraphCloudLicenseKey: ""
+  apiKey: ""
+
+apiServer:
+  service:
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+      service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "https"
+      service.beta.kubernetes.io/aws-load-balancer-ssl-cert: "<certificate arn>"
+```
+
+Example config file with external postgres:
+
+```jsx
+images:
+  # Make sure to replace this with your own LangGraph Cloud API image built with the cli.
+  apiServerImage:
+    pullPolicy: IfNotPresent
+    repository: <your repository>
+    tag: <image tag>
+
+config:
+  langGraphCloudLicenseKey: ""
+  apiKey: ""
+
+postgres:
+  external:
+    enabled: true
+    connectionUrl: "postgres://postgres:postgres@postgres-host.com:5432/postgres?sslmode=disable"
+```
+
+### Bundled MongoDB checkpointer
+
+Use the chart-managed MongoDB instance for local development, CI, and quickstarts. The chart provisions a single-node replica set and injects the generated MongoDB checkpointer defaults when `mongo.enabled` is true. This mode is convenient for getting started, but it is not the recommended production topology.
+
+When `mongo.enabled` is true, the chart always injects `LS_DEFAULT_CHECKPOINTER_BACKEND=mongo` and `LS_MONGODB_URI`. That lets app-level `LANGGRAPH_CHECKPOINTER` values supply overrides like `ttl` while still inheriting the MongoDB backend and URI defaults.
+
+By default this mode creates a persistent volume claim, so your cluster needs a default `StorageClass`.
+
+Create a values file:
+
+```yaml
+images:
+  apiServerImage:
+    pullPolicy: IfNotPresent
+    repository: <your repository>
+    tag: <image tag>
+
+mongo:
+  enabled: true
+```
+
+Install or upgrade the release:
+
+```bash
+helm upgrade --install my-release ./charts/langgraph-cloud \
+  --namespace langgraph --create-namespace \
+  -f values-mongo-bundled.yaml
+```
+
+### External MongoDB checkpointer
+
+Use an external MongoDB deployment for production. The MongoDB connection URL must:
+
+- include the target logical database name in the path
+- point at a replica set member or `mongos`
+
+This configuration is release-scoped. If you want two independently configured deployments, use two Helm releases and give each release its own MongoDB connection URL and logical database, even if both releases talk to the same MongoDB cluster.
+
+The external MongoDB settings manage the MongoDB connection URL secret. When `mongo.enabled` is true, the chart injects the MongoDB checkpointer defaults as `LS_DEFAULT_CHECKPOINTER_BACKEND` and `LS_MONGODB_URI`.
+
+Create a Kubernetes secret for the MongoDB connection URL:
+
+```bash
+kubectl -n langgraph create secret generic my-release-mongo \
+  --from-literal=mongodb_connection_url='mongodb://user:password@mongo.example.net:27017/my_release?replicaSet=rs0'
+```
+
+Then reference that secret from your values file:
+
+```yaml
+images:
+  apiServerImage:
+    pullPolicy: IfNotPresent
+    repository: <your repository>
+    tag: <image tag>
+
+mongo:
+  enabled: true
+  external:
+    enabled: true
+    existingSecretName: "my-release-mongo"
+```
+
+Install or upgrade the release:
+
+```bash
+helm upgrade --install my-release ./charts/langgraph-cloud \
+  --namespace langgraph --create-namespace \
+  -f values-mongo-external.yaml
+```
+
+> **Important:** `mongo.external.existingSecretName` is separate from `config.existingSecretName`. The former is for the MongoDB connection URL used by the checkpointer, while the latter is for `LANGSMITH_API_KEY` and `LANGGRAPH_CLOUD_LICENSE_KEY`.
+
+### Using `existingSecretName`
+
+If you don't want to check secrets into git, create a Kubernetes secret and reference it via `config.existingSecretName`. The chart expects the following keys:
+
+- `api_key` — mounted as `LANGSMITH_API_KEY` (optional)
+- `langgraph_cloud_license_key` — mounted as `LANGGRAPH_CLOUD_LICENSE_KEY` (optional)
+
+```yaml
+config:
+  existingSecretName: "my-langgraph-secret"
+```
+
+> **Important:** Do not use `extraEnv` to set `LANGSMITH_API_KEY` or `LANGGRAPH_CLOUD_LICENSE_KEY`. The chart manages these env vars directly from the secret referenced by `existingSecretName` (or the chart-created secret). Using `extraEnv` for these variables will cause license verification failures.
+
+Other application-specific secrets (e.g. `OPENAI_API_KEY`, `AZURE_OPENAI_API_KEY`) should still be mounted via `extraEnv` or `envFrom`.
+
+### Upgrading from < 0.2.0
+
+If you are upgrading from chart version < 0.2.0 and were using `extraEnv` to mount `LANGSMITH_API_KEY`:
+
+1. **Remove** the `LANGSMITH_API_KEY` entry from `extraEnv` on both `apiServer` and `queue` deployments.
+2. **Rename** the key in your Kubernetes secret from `LANGSMITH_API_KEY` to `api_key`.
+3. **Set** `config.existingSecretName` to point to your secret.
+
+Before (< 0.2.0):
+```yaml
+config:
+  existingSecretName: "langgraph-secrets"
+
+apiServer:
+  deployment:
+    extraEnv:
+      - name: LANGSMITH_API_KEY
+        valueFrom:
+          secretKeyRef:
+            name: langgraph-secrets
+            key: LANGSMITH_API_KEY
+queue:
+  deployment:
+    extraEnv:
+      - name: LANGSMITH_API_KEY
+        valueFrom:
+          secretKeyRef:
+            name: langgraph-secrets
+            key: LANGSMITH_API_KEY
+```
+
+After (>= 0.2.0):
+```yaml
+config:
+  existingSecretName: "langgraph-secrets"
+# No extraEnv needed for LANGSMITH_API_KEY — the chart handles it automatically.
+# Your secret should contain key `api_key` (and optionally `langgraph_cloud_license_key`).
+```
+
+If you are upgrading from a chart revision that used the old flat MongoDB values, move these keys before upgrading:
+
+- `mongo.resources` -> `mongo.statefulSet.resources`
+- `mongo.persistence` -> `mongo.statefulSet.persistence`
+
+### Deploying to Kubernetes:
+
+1. Verify that you can connect to your Kubernetes cluster(note: We highly suggest installing into an empty namespace)
+    1. Run `kubectl get pods`
+
+        Output should look something like:
+
+        ```bash
+        kubectl get pods
+        No resources found in default namespace.
+        ```
+
+2. Ensure you have the LangChain Helm repo added. (skip this step if you are using local charts)
+
+        helm repo add langchain https://langchain-ai.github.io/helm/
+        "langchain" has been added to your repositories
+
+3. Run `helm install langgraph-cloud langchain/langgraph-cloud --values langgraph_cloud_config.yaml`
+4. Run `kubectl get pods`
+    1. Output should now look something like:
+
+    ```bash
+    NAME                                 READY   STATUS    RESTARTS      AGE
+    langgraph-cloud-api-server-666d79569d-k4wgk   1/1     Running   2 (26s ago)   31s
+    langgraph-cloud-postgres-0                    1/1     Running   0             31s
+    ```
+
+### Validate your deployment:
+
+1. Run `kubectl get services`
+
+    Output should look something like:
+
+    ```bash
+    NAME                         TYPE           CLUSTER-IP       EXTERNAL-IP   PORT(S)                     AGE
+    langgraph-cloud-api-server   LoadBalancer   172.20.59.8      <ip>         80:30176/TCP,443:31693/TCP   67s
+    langgraph-cloud-postgres     ClusterIP      172.20.91.2      <none>       6379/TCP                     7m22s
+    ```
+
+3. Visit the `ip/docs` for the `langgraph-cloud-api-server` service on your browser
+
+    The LangGraph Cloud docs UI should be visible/operational
+
+    ![./langgraph_cloud_ui.png](langgraph_cloud_ui.png)
+
+## FAQ:
+
+1. How can we upgrade our application?
+    - To upgrade, you will need to follow the upgrade instructions in the Helm README and run a `helm upgrade langgraph-cloud --values <values file>`
+2. How can we backup our application?
+    - Currently, we rely on PVCs/PV to power storage for our application. We strongly encourage setting up `Persistent Volume` backups or moving to a managed service for `Postgres` to support disaster recovery
+3. How does load balancing work/ingress work?
+    - Currently, our application spins up one load balancer using a k8s service of type `LoadBalancer` for our frontend. If you do not want to setup a load balancer you can simply port-forward the frontend and use that as your external ip for the application.
+    - We also have an option for the chart to provision an ingress resource for the application.
+4. How can we authenticate to the application?
+    - You can use LangSmith authentication to authenticate to the application. You can find more information on how to setup LangSmith in the LangSmith documentation.
+5. How can I use External `Postgres`?
+    - You can configure external postgres using the external sections in the `values.yaml` file. You will need to provide the connection url/params for the postgres instance. Look at the configuration above example for more information.
+6. What networking configuration is needed  for the application?
+    - Our deployment only needs egress for a few things:
+        - Fetching images (If mirroring your images, this may not be needed)
+        - Talking to any LLMs
+    - Your VPC can set up rules to limit any other access.
+7. What resources should we allocate to the application?
+    - We recommend at least 1 vCPUs and 4GB of memory for our application.
+    - We have some default resources set in our `values.yaml` file. You can override these values to tune resource usage for your organization.
+    - If the metrics server is enabled in your cluster, we also recommend enabling autoscaling on all deployments.
+
+## General parameters
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| clusterDomain | string | `"cluster.local"` | Kubernetes cluster domain. Only change if not using 'cluster.local' |
+| commonAnnotations | object | `{}` | Annotations that will be applied to all resources created by the chart |
+| commonDnsConfig | object | `{"options":[{"name":"ndots","value":"4"}]}` | Set to null to disable and use Kubernetes defaults (ndots: 5). |
+| commonLabels | object | `{}` | Labels that will be applied to all resources created by the chart |
+| commonVolumeMounts | list | `[]` | Common volume mounts added to all deployments/statefulsets. |
+| commonVolumes | list | `[]` | Common volumes added to all deployments/statefulsets. |
+| fullnameOverride | string | `""` | String to fully override `"langgraph-cloud.fullname"` |
+| gateway | object | `{"annotations":{},"basePath":"","enabled":false,"hostname":"","labels":{},"name":"","namespace":"","sectionName":""}` | Only one of ingress, gateway, or istioGateway can be enabled at the same time. |
+| gateway.basePath | string | `""` | WARNING: Changing basePath after deployment will break existing routes. |
+| gateway.hostname | string | `""` | Hostname for the HTTPRoute. If not set, the route will match all hostnames. |
+| gateway.name | string | `""` | Name of the Gateway resource to attach the HTTPRoute to. |
+| gateway.namespace | string | `""` | Namespace of the Gateway resource. If not set, the HTTPRoute will not specify a namespace for the parentRef. |
+| gateway.sectionName | string | `""` | Section name of the Gateway listener to attach to. |
+| images.apiServerImage.pullPolicy | string | `"Always"` |  |
+| images.apiServerImage.repository | string | `"docker.io/langchain/langgraph-api"` |  |
+| images.apiServerImage.tag | string | `"3.11-28c1407"` |  |
+| images.imagePullSecrets | list | `[]` | Secrets with credentials to pull images from a private registry. Specified as name: value. |
+| images.mongoImage.pullPolicy | string | `"IfNotPresent"` |  |
+| images.mongoImage.repository | string | `"mongo"` |  |
+| images.mongoImage.tag | string | `"7"` |  |
+| images.postgresImage.pullPolicy | string | `"IfNotPresent"` |  |
+| images.postgresImage.repository | string | `"pgvector/pgvector"` |  |
+| images.postgresImage.tag | string | `"pg16"` |  |
+| images.redisImage.pullPolicy | string | `"IfNotPresent"` |  |
+| images.redisImage.repository | string | `"docker.io/redis"` |  |
+| images.redisImage.tag | string | `"6"` |  |
+| images.registry | string | `""` | If supplied, all children <image_name>.repository values will be prepended with this registry name + `/` |
+| ingress.annotations | object | `{}` |  |
+| ingress.enabled | bool | `false` |  |
+| ingress.hostname | string | `""` |  |
+| ingress.ingressClassName | string | `""` |  |
+| ingress.labels | object | `{}` |  |
+| ingress.tls | list | `[]` |  |
+| istioGateway | object | `{"annotations":{},"basePath":"","enabled":false,"hostname":"","labels":{},"name":"","namespace":""}` | Only one of ingress, gateway, or istioGateway can be enabled at the same time. |
+| istioGateway.basePath | string | `""` | WARNING: Changing basePath after deployment will break existing routes. |
+| istioGateway.hostname | string | `""` | Hostname for the VirtualService. If not set, the VirtualService will match all hosts ("*"). |
+| istioGateway.name | string | `""` | Name of the Istio Gateway resource. |
+| istioGateway.namespace | string | `""` | Namespace of the Istio Gateway resource. |
+| mongo.enabled | bool | `false` | Enable MongoDB checkpointing. When `mongo.external.enabled` is false, the chart provisions a bundled single-node MongoDB replica set intended for local development, CI, and quickstarts. |
+| mongo.external.connectionUrl | string | `""` | MongoDB connection URL used when `mongo.enabled` and `mongo.external.enabled` are true. Must include the target database name and point at a replica set member or `mongos`. |
+| mongo.external.enabled | bool | `false` | Use an external MongoDB deployment instead of the chart-managed MongoDB instance. |
+| mongo.external.existingSecretName | string | `""` | Existing secret name containing the MongoDB connection URL. |
+| mongo.statefulSet.automountServiceAccountToken | bool | `true` | Controls whether the bundled MongoDB pod automatically mounts a ServiceAccount token. |
+| mongo.statefulSet.persistence.size | string | `"8Gi"` | Persistent volume size for the bundled MongoDB instance. |
+| mongo.statefulSet.priorityClassName | string | `""` | Optional priority class for the in-chart MongoDB pod. |
+| mongo.statefulSet.resources | object | `{"limits":{"cpu":"2000m","memory":"4Gi"},"requests":{"cpu":"500m","memory":"1Gi"}}` | Resource requests and limits for the bundled MongoDB pod. |
+| mongo.statefulSet.updateStrategy | object | `{}` | Optional StatefulSet update strategy for the in-chart MongoDB instance. Leave unset to keep the Kubernetes default RollingUpdate behavior. |
+| nameOverride | string | `""` | Provide a name in place of `langgraph-cloud` for the chart |
+| namespace | string | `""` | Namespace to install the chart into. If not set, will use the namespace of the current context. |
+| queue.autoscaling.enabled | bool | `false` |  |
+| queue.autoscaling.keda.cooldownPeriod | int | `300` |  |
+| queue.autoscaling.keda.enabled | bool | `false` |  |
+| queue.autoscaling.keda.pollingInterval | int | `30` |  |
+| queue.autoscaling.keda.scaleDownStabilizationWindowSeconds | int | `300` |  |
+| queue.autoscaling.maxReplicas | int | `5` |  |
+| queue.autoscaling.minReplicas | int | `1` |  |
+| queue.autoscaling.targetCPUUtilizationPercentage | int | `80` |  |
+| queue.containerPort | int | `8000` |  |
+| queue.deployment.affinity | object | `{}` |  |
+| queue.deployment.annotations | object | `{}` |  |
+| queue.deployment.envFrom | list | `[]` |  |
+| queue.deployment.extraEnv | list | `[]` |  |
+| queue.deployment.extraPorts | list | `[]` |  |
+| queue.deployment.labels | object | `{}` |  |
+| queue.deployment.lifecycle | object | `{}` |  |
+| queue.deployment.livenessProbe.failureThreshold | int | `6` |  |
+| queue.deployment.livenessProbe.httpGet.path | string | `"/ok"` |  |
+| queue.deployment.livenessProbe.httpGet.port | int | `8000` |  |
+| queue.deployment.livenessProbe.periodSeconds | int | `10` |  |
+| queue.deployment.livenessProbe.timeoutSeconds | int | `1` |  |
+| queue.deployment.nodeSelector | object | `{}` |  |
+| queue.deployment.podSecurityContext | object | `{}` |  |
+| queue.deployment.priorityClassName | string | `""` |  |
+| queue.deployment.readinessProbe.failureThreshold | int | `6` |  |
+| queue.deployment.readinessProbe.httpGet.path | string | `"/ok"` |  |
+| queue.deployment.readinessProbe.httpGet.port | int | `8000` |  |
+| queue.deployment.readinessProbe.periodSeconds | int | `10` |  |
+| queue.deployment.readinessProbe.timeoutSeconds | int | `1` |  |
+| queue.deployment.replicaCount | int | `1` |  |
+| queue.deployment.resources.limits.cpu | string | `"2000m"` |  |
+| queue.deployment.resources.limits.memory | string | `"4Gi"` |  |
+| queue.deployment.resources.requests.cpu | string | `"1000m"` |  |
+| queue.deployment.resources.requests.memory | string | `"2Gi"` |  |
+| queue.deployment.securityContext | object | `{}` |  |
+| queue.deployment.sidecars | list | `[]` |  |
+| queue.deployment.startupProbe.failureThreshold | int | `6` |  |
+| queue.deployment.startupProbe.httpGet.path | string | `"/ok"` |  |
+| queue.deployment.startupProbe.httpGet.port | int | `8000` |  |
+| queue.deployment.startupProbe.periodSeconds | int | `10` |  |
+| queue.deployment.startupProbe.timeoutSeconds | int | `1` |  |
+| queue.deployment.terminationGracePeriodSeconds | int | `30` |  |
+| queue.deployment.tolerations | list | `[]` |  |
+| queue.deployment.volumeMounts | list | `[]` |  |
+| queue.deployment.volumes | list | `[]` |  |
+| queue.enabled | bool | `false` |  |
+| queue.name | string | `"queue"` |  |
+| queue.pdb.enabled | bool | `false` |  |
+| queue.pdb.minAvailable | int | `1` |  |
+| queue.serviceAccount.annotations | object | `{}` |  |
+| queue.serviceAccount.automountServiceAccountToken | bool | `true` |  |
+| queue.serviceAccount.create | bool | `true` |  |
+| queue.serviceAccount.labels | object | `{}` |  |
+| queue.serviceAccount.name | string | `""` |  |
+| redis.containerPort | int | `6379` |  |
+| redis.deployment.affinity | object | `{}` |  |
+| redis.deployment.annotations | object | `{}` |  |
+| redis.deployment.command | list | `[]` |  |
+| redis.deployment.extraContainerConfig | object | `{}` |  |
+| redis.deployment.extraEnv | list | `[]` |  |
+| redis.deployment.labels | object | `{}` |  |
+| redis.deployment.lifecycle | object | `{}` |  |
+| redis.deployment.livenessProbe.exec.command[0] | string | `"/bin/sh"` |  |
+| redis.deployment.livenessProbe.exec.command[1] | string | `"-c"` |  |
+| redis.deployment.livenessProbe.exec.command[2] | string | `"exec redis-cli ping"` |  |
+| redis.deployment.livenessProbe.failureThreshold | int | `6` |  |
+| redis.deployment.livenessProbe.periodSeconds | int | `10` |  |
+| redis.deployment.livenessProbe.timeoutSeconds | int | `1` |  |
+| redis.deployment.nodeSelector | object | `{}` |  |
+| redis.deployment.podSecurityContext | object | `{}` |  |
+| redis.deployment.priorityClassName | string | `""` |  |
+| redis.deployment.readinessProbe.exec.command[0] | string | `"/bin/sh"` |  |
+| redis.deployment.readinessProbe.exec.command[1] | string | `"-c"` |  |
+| redis.deployment.readinessProbe.exec.command[2] | string | `"exec redis-cli ping"` |  |
+| redis.deployment.readinessProbe.failureThreshold | int | `6` |  |
+| redis.deployment.readinessProbe.periodSeconds | int | `10` |  |
+| redis.deployment.readinessProbe.timeoutSeconds | int | `1` |  |
+| redis.deployment.resources.limits.cpu | string | `"2000m"` |  |
+| redis.deployment.resources.limits.memory | string | `"4Gi"` |  |
+| redis.deployment.resources.requests.cpu | string | `"1000m"` |  |
+| redis.deployment.resources.requests.memory | string | `"2Gi"` |  |
+| redis.deployment.securityContext | object | `{}` |  |
+| redis.deployment.sidecars | list | `[]` |  |
+| redis.deployment.startupProbe.exec.command[0] | string | `"/bin/sh"` |  |
+| redis.deployment.startupProbe.exec.command[1] | string | `"-c"` |  |
+| redis.deployment.startupProbe.exec.command[2] | string | `"exec redis-cli ping"` |  |
+| redis.deployment.startupProbe.failureThreshold | int | `6` |  |
+| redis.deployment.startupProbe.periodSeconds | int | `10` |  |
+| redis.deployment.startupProbe.timeoutSeconds | int | `1` |  |
+| redis.deployment.terminationGracePeriodSeconds | int | `30` |  |
+| redis.deployment.tolerations | list | `[]` |  |
+| redis.deployment.volumeMounts | list | `[]` |  |
+| redis.deployment.volumes | list | `[]` |  |
+| redis.external.connectionUrl | string | `""` |  |
+| redis.external.enabled | bool | `false` |  |
+| redis.external.existingSecretName | string | `""` |  |
+| redis.name | string | `"redis"` |  |
+| redis.pdb.enabled | bool | `false` |  |
+| redis.pdb.minAvailable | int | `1` |  |
+| redis.service.annotations | object | `{}` |  |
+| redis.service.labels | object | `{}` |  |
+| redis.service.loadBalancerIP | string | `""` |  |
+| redis.service.loadBalancerSourceRanges | list | `[]` |  |
+| redis.service.port | int | `6379` |  |
+| redis.service.type | string | `"ClusterIP"` |  |
+| redis.serviceAccount.annotations | object | `{}` |  |
+| redis.serviceAccount.automountServiceAccountToken | bool | `true` |  |
+| redis.serviceAccount.create | bool | `true` |  |
+| redis.serviceAccount.labels | object | `{}` |  |
+| redis.serviceAccount.name | string | `""` |  |
+
+## Configs
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| config.apiKey | string | `""` | Optional LangSmith API key mounted as LANGSMITH_API_KEY. |
+| config.auth.enabled | bool | `false` |  |
+| config.auth.langSmithAuthEndpoint | string | `""` |  |
+| config.auth.langSmithTenantId | string | `""` |  |
+| config.existingSecretName | string | `""` |  |
+| config.httpMaxRequestBodyBytes | string | `""` | Set this to override the default limit. Requests exceeding this limit receive HTTP 413. |
+| config.langGraphCloudLicenseKey | string | `""` | Optional LangGraph Cloud license key loaded from the chart secret. |
+| config.numberOfJobsPerWorker | int | `10` |  |
+| config.skipValidation | bool | `false` | Skip chart validation checks (ingress/gateway mutual-exclusion and MongoDB config guards). Used for helm template verification (e.g. AWS Marketplace). |
+
+## Api Server
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| apiServer.autoscaling.enabled | bool | `false` |  |
+| apiServer.autoscaling.keda.cooldownPeriod | int | `300` |  |
+| apiServer.autoscaling.keda.enabled | bool | `false` |  |
+| apiServer.autoscaling.keda.pollingInterval | int | `30` |  |
+| apiServer.autoscaling.keda.scaleDownStabilizationWindowSeconds | int | `300` |  |
+| apiServer.autoscaling.maxReplicas | int | `5` |  |
+| apiServer.autoscaling.minReplicas | int | `1` |  |
+| apiServer.autoscaling.targetCPUUtilizationPercentage | int | `80` |  |
+| apiServer.containerPort | int | `8000` |  |
+| apiServer.deployment.affinity | object | `{}` |  |
+| apiServer.deployment.annotations | object | `{}` |  |
+| apiServer.deployment.envFrom | list | `[]` |  |
+| apiServer.deployment.extraEnv | list | `[]` |  |
+| apiServer.deployment.initContainers | list | `[]` |  |
+| apiServer.deployment.labels | object | `{}` |  |
+| apiServer.deployment.lifecycle | object | `{}` |  |
+| apiServer.deployment.livenessProbe.exec.command[0] | string | `"/bin/sh"` |  |
+| apiServer.deployment.livenessProbe.exec.command[1] | string | `"-c"` |  |
+| apiServer.deployment.livenessProbe.exec.command[2] | string | `"exec python /api/healthcheck.py"` |  |
+| apiServer.deployment.livenessProbe.failureThreshold | int | `6` |  |
+| apiServer.deployment.livenessProbe.periodSeconds | int | `10` |  |
+| apiServer.deployment.livenessProbe.timeoutSeconds | int | `1` |  |
+| apiServer.deployment.nodeSelector | object | `{}` |  |
+| apiServer.deployment.podSecurityContext | object | `{}` |  |
+| apiServer.deployment.priorityClassName | string | `""` |  |
+| apiServer.deployment.readinessProbe.exec.command[0] | string | `"/bin/sh"` |  |
+| apiServer.deployment.readinessProbe.exec.command[1] | string | `"-c"` |  |
+| apiServer.deployment.readinessProbe.exec.command[2] | string | `"exec python /api/healthcheck.py"` |  |
+| apiServer.deployment.readinessProbe.failureThreshold | int | `6` |  |
+| apiServer.deployment.readinessProbe.periodSeconds | int | `10` |  |
+| apiServer.deployment.readinessProbe.timeoutSeconds | int | `1` |  |
+| apiServer.deployment.replicaCount | int | `1` |  |
+| apiServer.deployment.resources.limits.cpu | string | `"2000m"` |  |
+| apiServer.deployment.resources.limits.memory | string | `"4Gi"` |  |
+| apiServer.deployment.resources.requests.cpu | string | `"1000m"` |  |
+| apiServer.deployment.resources.requests.memory | string | `"2Gi"` |  |
+| apiServer.deployment.securityContext | object | `{}` |  |
+| apiServer.deployment.sidecars | list | `[]` |  |
+| apiServer.deployment.startupProbe.exec.command[0] | string | `"/bin/sh"` |  |
+| apiServer.deployment.startupProbe.exec.command[1] | string | `"-c"` |  |
+| apiServer.deployment.startupProbe.exec.command[2] | string | `"exec python /api/healthcheck.py"` |  |
+| apiServer.deployment.startupProbe.failureThreshold | int | `6` |  |
+| apiServer.deployment.startupProbe.periodSeconds | int | `10` |  |
+| apiServer.deployment.startupProbe.timeoutSeconds | int | `1` |  |
+| apiServer.deployment.terminationGracePeriodSeconds | int | `30` |  |
+| apiServer.deployment.tolerations | list | `[]` |  |
+| apiServer.deployment.volumeMounts | list | `[]` |  |
+| apiServer.deployment.volumes | list | `[]` |  |
+| apiServer.name | string | `"api-server"` |  |
+| apiServer.pdb.enabled | bool | `false` |  |
+| apiServer.pdb.minAvailable | int | `1` |  |
+| apiServer.service.annotations | object | `{}` |  |
+| apiServer.service.httpPort | int | `80` |  |
+| apiServer.service.httpsPort | int | `443` |  |
+| apiServer.service.labels | object | `{}` |  |
+| apiServer.service.loadBalancerIP | string | `""` |  |
+| apiServer.service.loadBalancerSourceRanges | list | `[]` |  |
+| apiServer.service.type | string | `"LoadBalancer"` |  |
+| apiServer.serviceAccount.annotations | object | `{}` |  |
+| apiServer.serviceAccount.automountServiceAccountToken | bool | `true` |  |
+| apiServer.serviceAccount.create | bool | `true` |  |
+| apiServer.serviceAccount.labels | object | `{}` |  |
+| apiServer.serviceAccount.name | string | `""` |  |
+
+## Postgres
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| postgres.containerPort | int | `5432` |  |
+| postgres.external.connectionUrl | string | `""` |  |
+| postgres.external.database | string | `"postgres"` |  |
+| postgres.external.enabled | bool | `false` |  |
+| postgres.external.existingSecretName | string | `""` |  |
+| postgres.external.host | string | `""` |  |
+| postgres.external.password | string | `"postgres"` |  |
+| postgres.external.port | string | `"5432"` |  |
+| postgres.external.schema | string | `"public"` |  |
+| postgres.external.user | string | `"postgres"` |  |
+| postgres.name | string | `"postgres"` |  |
+| postgres.pdb.enabled | bool | `false` |  |
+| postgres.pdb.minAvailable | int | `1` |  |
+| postgres.service.annotations | object | `{}` |  |
+| postgres.service.labels | object | `{}` |  |
+| postgres.service.loadBalancerIP | string | `""` |  |
+| postgres.service.loadBalancerSourceRanges | list | `[]` |  |
+| postgres.service.port | int | `5432` |  |
+| postgres.service.type | string | `"ClusterIP"` |  |
+| postgres.serviceAccount.annotations | object | `{}` |  |
+| postgres.serviceAccount.automountServiceAccountToken | bool | `true` |  |
+| postgres.serviceAccount.create | bool | `true` |  |
+| postgres.serviceAccount.labels | object | `{}` |  |
+| postgres.serviceAccount.name | string | `""` |  |
+| postgres.statefulSet.affinity | object | `{}` |  |
+| postgres.statefulSet.annotations | object | `{}` |  |
+| postgres.statefulSet.command | list | `[]` |  |
+| postgres.statefulSet.extraContainerConfig | object | `{}` |  |
+| postgres.statefulSet.extraEnv | list | `[]` |  |
+| postgres.statefulSet.labels | object | `{}` |  |
+| postgres.statefulSet.lifecycle | object | `{}` |  |
+| postgres.statefulSet.nodeSelector | object | `{}` |  |
+| postgres.statefulSet.persistence.enabled | bool | `true` |  |
+| postgres.statefulSet.persistence.size | string | `"8Gi"` |  |
+| postgres.statefulSet.persistence.storageClassName | string | `""` |  |
+| postgres.statefulSet.persistentVolumeClaimRetentionPolicy | object | `{}` |  |
+| postgres.statefulSet.podSecurityContext | object | `{}` |  |
+| postgres.statefulSet.priorityClassName | string | `""` |  |
+| postgres.statefulSet.resources.limits.cpu | string | `"4000m"` |  |
+| postgres.statefulSet.resources.limits.memory | string | `"16Gi"` |  |
+| postgres.statefulSet.resources.requests.cpu | string | `"2000m"` |  |
+| postgres.statefulSet.resources.requests.memory | string | `"8Gi"` |  |
+| postgres.statefulSet.securityContext | object | `{}` |  |
+| postgres.statefulSet.sidecars | list | `[]` |  |
+| postgres.statefulSet.terminationGracePeriodSeconds | int | `30` |  |
+| postgres.statefulSet.tolerations | list | `[]` |  |
+| postgres.statefulSet.updateStrategy | object | `{}` | Optional StatefulSet update strategy for the in-chart PostgreSQL instance. Leave unset to keep the Kubernetes default RollingUpdate behavior. |
+| postgres.statefulSet.volumeMounts | list | `[]` |  |
+| postgres.statefulSet.volumes | list | `[]` |  |
+
+## Maintainers
+
+| Name | Email | Url |
+| ---- | ------ | --- |
+| Ankush | <ankush@langchain.dev> |  |
+
+----------------------------------------------
+Autogenerated from chart metadata using [helm-docs v1.14.2](https://github.com/norwoodj/helm-docs/releases/v1.14.2)
+## Docs Generated by [helm-docs](https://github.com/norwoodj/helm-docs)
+`helm-docs -t ./charts/langgraph-cloud/README.md.gotmpl`

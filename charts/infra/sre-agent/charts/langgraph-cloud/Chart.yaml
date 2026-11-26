@@ -1,0 +1,10 @@
+apiVersion: v2
+appVersion: 0.2.3
+description: Helm chart to deploy the LangGraph Cloud application and all services
+  it depends on.
+maintainers:
+- email: ankush@langchain.dev
+  name: Ankush
+name: langgraph-cloud
+type: application
+version: 0.3.5

@@ -133,6 +133,10 @@ langgraph-cloud:
         size: 2Gi
   redis:
     deployment:
+      # 5s probe timeouts (chart default 1s timed out under node load, 2026-11-26)
+      startupProbe: {exec: {command: [/bin/sh, -c, exec redis-cli ping]}, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 6}
+      readinessProbe: {exec: {command: [/bin/sh, -c, exec redis-cli ping]}, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 6}
+      livenessProbe: {exec: {command: [/bin/sh, -c, exec redis-cli ping]}, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 6}
       resources:
         requests: { cpu: 20m, memory: 32Mi }
         limits: { cpu: 500m, memory: 128Mi }
