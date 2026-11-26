@@ -49,7 +49,7 @@ prometheus:
             - alert: PodCrashLooping
               expr: increase(kube_pod_container_status_restarts_total[10m]) > 2
               for: 1m
-              labels: {severity: warning}
+              labels: {severity: critical}
               annotations:
                 summary: "{{ $labels.pod }}/{{ $labels.container }} restarted {{ $value | humanize }} times in 10m"
             - alert: PodWaitingBadState
@@ -63,7 +63,7 @@ prometheus:
                 max by (namespace, pod, container) (kube_pod_container_status_last_terminated_reason{reason="OOMKilled"}) > 0
                 and on (namespace, pod, container)
                 increase(kube_pod_container_status_restarts_total[10m]) > 0
-              labels: {severity: warning}
+              labels: {severity: critical}
               annotations:
                 summary: "{{ $labels.pod }}/{{ $labels.container }} was OOMKilled"
             - alert: PodPending
@@ -78,6 +78,9 @@ prometheus:
               labels: {severity: warning}
               annotations:
                 summary: "deployment {{ $labels.deployment }} has fewer available replicas than desired"
+        # Priority = `severity`: critical (users affected / alerting blind) and warning (broken or
+        # degraded) get a full diagnosis and, for fixable charts, a fix PR; info (early signal, safe
+        # to skip) gets a quick triage only, never a PR.
         - name: cluster
           rules:
             # Node (kube-state-metrics conditions, node-exporter resources)
@@ -89,12 +92,12 @@ prometheus:
             - alert: NodePressure
               expr: max by (node, condition) (kube_node_status_condition{condition=~"MemoryPressure|DiskPressure|PIDPressure", status="true"}) == 1
               for: 2m
-              labels: {severity: warning}
+              labels: {severity: critical}
               annotations: {summary: "node {{ $labels.node }} reports {{ $labels.condition }}"}
             - alert: NodeUnschedulable
               expr: max by (node) (kube_node_spec_unschedulable) == 1
               for: 10m
-              labels: {severity: warning}
+              labels: {severity: info}
               annotations: {summary: "node {{ $labels.node }} is cordoned (unschedulable) for 10m"}
             - alert: NodeMemoryHigh
               expr: max by (instance) (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) > 0.9
@@ -114,7 +117,7 @@ prometheus:
             - alert: NodeDiskFillingIn6h
               expr: min by (instance, device) (predict_linear(node_filesystem_avail_bytes{fstype=~"ext4|xfs|btrfs"}[6h], 6 * 3600)) < 0
               for: 30m
-              labels: {severity: warning}
+              labels: {severity: info}
               annotations: {summary: "node {{ $labels.instance }} disk {{ $labels.device }} will be full within 6h at the current rate"}
             # Workloads (all namespaces)
             - alert: StatefulSetReplicasMismatch
@@ -191,7 +194,7 @@ prometheus:
                   / max by (namespace, pod) (kube_pod_container_resource_limits{namespace="default", resource="memory", container=~"pulsar|voyager"}),
                   "app", "$1", "pod", "(pulsar|voyager)-.*") > 0.85
               for: 5m
-              labels: {severity: warning}
+              labels: {severity: info}
               annotations:
                 summary: "{{ $labels.app }} ({{ $labels.pod }}) is using {{ $value | humanizePercentage }} of its memory limit"
             - alert: AppCPUHigh
@@ -200,6 +203,6 @@ prometheus:
                   max by (namespace, pod) (rate(container_cpu_usage_seconds_total{namespace="default", pod=~"(pulsar|voyager)-.*"}[5m])),
                   "app", "$1", "pod", "(pulsar|voyager)-.*") > 0.2
               for: 10m
-              labels: {severity: warning}
+              labels: {severity: info}
               annotations:
                 summary: "{{ $labels.app }} ({{ $labels.pod }}) has used {{ $value | humanize }} CPU cores for 10m (normal is ~0.005, request 0.01)"

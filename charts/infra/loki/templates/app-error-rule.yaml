@@ -15,7 +15,7 @@ data:
               label_replace(sum by (kubernetes_container_name) (count_over_time({kubernetes_namespace_name="default", kubernetes_container_name=~"pulsar|voyager"} |~ "Traceback|\" 50[0-9] " [5m])), "app", "$1", "kubernetes_container_name", "(.*)") > 3
             for: 1m
             labels:
-              severity: warning
+              severity: critical
               namespace: default
             annotations:
               summary: "{{ `{{ $labels.kubernetes_container_name }}` }} logged {{ `{{ $value }}` }} errors/5xx in 5m"
@@ -35,16 +35,23 @@ data:
         rules:
           - alert: KubeWarningEvents
             expr: |
-              label_replace(sum by (involvedObject_namespace, reason) (count_over_time({job="k8s-events", type="Warning", reason=~"FailedScheduling|FailedMount|FailedAttachVolume|FailedCreate|FailedCreatePodSandBox|FailedKillPod|FailedPostStartHook|FailedPreStopHook|Evicted|Preempting|NodeNotReady|Rebooted|SystemOOM|OOMKilling|EvictionThresholdMet|FreeDiskSpaceFailed|ImageGCFailed|ContainerGCFailed|InvalidDiskCapacity|NetworkNotReady|ProvisioningFailed|FailedBinding"} [10m])), "namespace", "$1", "involvedObject_namespace", "(.*)") > 0
+              label_replace(sum by (involvedObject_namespace, reason) (count_over_time({job="k8s-events", type="Warning", reason=~"FailedScheduling|FailedMount|FailedAttachVolume|FailedCreate|FailedCreatePodSandBox|FailedKillPod|FailedPostStartHook|FailedPreStopHook|Evicted|NodeNotReady|Rebooted|SystemOOM|OOMKilling|EvictionThresholdMet|NetworkNotReady|ProvisioningFailed|FailedBinding"} [10m])), "namespace", "$1", "involvedObject_namespace", "(.*)") > 0
             labels:
               severity: warning
             annotations:
               summary: "{{ `{{ $value }}` }} {{ `{{ $labels.reason }}` }} warning events in namespace {{ `{{ $labels.namespace }}` }} (10m)"
+          - alert: KubeInfoEvents
+            expr: |
+              label_replace(sum by (involvedObject_namespace, reason) (count_over_time({job="k8s-events", type="Warning", reason=~"Preempting|ImageGCFailed|ContainerGCFailed|InvalidDiskCapacity|FreeDiskSpaceFailed"} [10m])), "namespace", "$1", "involvedObject_namespace", "(.*)") > 0
+            labels:
+              severity: info
+            annotations:
+              summary: "{{ `{{ $value }}` }} {{ `{{ $labels.reason }}` }} housekeeping events in namespace {{ `{{ $labels.namespace }}` }} (10m)"
           - alert: PodProbeFailures
             expr: |
               label_replace(sum by (involvedObject_namespace) (count_over_time({job="k8s-events", type="Warning", reason="Unhealthy"} [10m])), "namespace", "$1", "involvedObject_namespace", "(.*)") > 5
             labels:
-              severity: warning
+              severity: info
             annotations:
               summary: "{{ `{{ $value }}` }} liveness/readiness probe failures in namespace {{ `{{ $labels.namespace }}` }} (10m)"
           - alert: ArgoCDAppProblem
