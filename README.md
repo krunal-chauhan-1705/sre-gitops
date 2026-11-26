@@ -7,7 +7,7 @@ in `apps/`. The SRE agent's fix PRs may touch `charts/apps/{pulsar,voyager}/` an
 ```
 bootstrap/            argocd-values.yaml (helm install once), root.yaml (app-of-apps)
 apps/                 one ArgoCD Application per component
-charts/infra/         grafana, loki, prometheus(+alertmanager), fluent-bit, mcp-grafana, kubernetes-mcp, sre-agent
+charts/infra/         grafana, loki, prometheus(+alertmanager), fluent-bit, mcp-grafana, sre-agent
 charts/apps/          pulsar, voyager, loadgen   <- fix PRs land here
 ```
 
