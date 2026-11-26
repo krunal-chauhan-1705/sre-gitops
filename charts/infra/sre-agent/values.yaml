@@ -88,6 +88,10 @@ langgraph-cloud:
     enabled: true
     deployment:
       replicaCount: 1
+      # 5s timeouts: a 1s probe kill on a busy node would abort in-flight runs; 5 min startup window.
+      startupProbe: {httpGet: {path: /ok, port: 8000}, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 30}
+      readinessProbe: {httpGet: {path: /ok, port: 8000}, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 6}
+      livenessProbe: {httpGet: {path: /ok, port: 8000}, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 6}
       terminationGracePeriodSeconds: 180
       resources:
         requests: { cpu: 200m, memory: 384Mi }
