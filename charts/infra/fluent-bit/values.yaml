@@ -1,6 +1,8 @@
 # Wraps fluent/fluent-bit 0.57.9. Container logs (tail) + Kubernetes events -> Loki.
 # Events make Grafana the agent's single source for logs, metrics and events (no Kubernetes MCP).
 fluent-bit:
+  image:
+    tag: v5.0.9
   rbac:
     eventsAccess: true   # get/list/watch events for the kubernetes_events input
   resources:
