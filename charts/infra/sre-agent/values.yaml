@@ -52,7 +52,7 @@ langgraph-cloud:
     service:
       type: ClusterIP                # AS-06: the server has no auth
     deployment:
-      replicaCount: 1
+      replicaCount: 0   # paused 2026-11-26; set back to 1 to resume
       resources:
         requests: { cpu: 100m, memory: 256Mi }
         limits: { cpu: "1", memory: 768Mi }
@@ -87,7 +87,7 @@ langgraph-cloud:
   queue:
     enabled: true
     deployment:
-      replicaCount: 1
+      replicaCount: 0   # paused 2026-11-26; set back to 1 to resume
       # 5s timeouts: a 1s probe kill on a busy node would abort in-flight runs; 5 min startup window.
       startupProbe: {httpGet: {path: /ok, port: 8000}, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 30}
       readinessProbe: {httpGet: {path: /ok, port: 8000}, periodSeconds: 10, timeoutSeconds: 5, failureThreshold: 6}
