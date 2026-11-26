@@ -39,6 +39,12 @@ prometheus:
         group_wait: 30s
         group_interval: 5m
         repeat_interval: 4h
+        routes:
+          # info = early signal: one incident per alert name across all namespaces, so a single
+          # load event (e.g. probe timeouts everywhere) is one triage, not one per namespace.
+          - receiver: sre-agent
+            matchers: ['severity="info"']
+            group_by: [alertname]
 
   # Rules cover every namespace and the node; Kubernetes events are alerted on by the Loki ruler.
   serverFiles:
