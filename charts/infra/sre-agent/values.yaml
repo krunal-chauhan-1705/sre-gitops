@@ -28,6 +28,7 @@ agentEnv: &agentEnv
   - { name: MODEL_FALLBACKS, value: "particle-ai/particle-1:free" }  # OpenRouter, used when Claude errors or hangs
   - { name: FIX_MODEL, value: "" }                                      # empty = MODEL
   - { name: GITOPS_REPO, value: krunal-chauhan-1705/sre-gitops }      # PRs + history via the GitHub API
+  - { name: PR_REVIEWERS, value: krunal-chauhan-1705 }               # assigned on every fix PR; review requested unless they are the PR author
   - { name: GRAFANA_MCP_URL, value: "http://mcp-grafana.o11y.svc.cluster.local:8000/mcp" }
   - { name: K8S_MCP_URL, value: "http://mcp-kubernetes.o11y.svc.cluster.local:8080/mcp" }
   - { name: AGENT_EVENTS_URL, value: "http://sre-agent-api-server.sre-agent.svc.cluster.local/agent-events" }
@@ -43,7 +44,7 @@ langgraph-cloud:
   images:
     apiServerImage:                  # `langgraph build` against minikube docker-env (sre-agents README)
       repository: sre-agent
-      tag: "0.1.13"
+      tag: "0.1.14"
       pullPolicy: IfNotPresent
   config:
     existingSecretName: sre-agent-secrets
