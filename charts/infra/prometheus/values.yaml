@@ -188,27 +188,22 @@ prometheus:
               expr: increase(prometheus_rule_evaluation_failures_total[10m]) > 0
               labels: {severity: warning, namespace: o11y}
               annotations: {summary: "Prometheus rule evaluations are failing ({{ $labels.rule_group }})"}
-        # App resource alerts for pulsar and voyager. One alert name per signal, `app` label per app:
-        # a pulsar fault that also hurts voyager stays ONE incident (Alertmanager groups by alertname).
-        # cAdvisor on this minikube (Docker runtime) only has pod-level series, so match by pod.
-        - name: apps
+        # Pod CPU and memory, every namespace. cAdvisor on this minikube (Docker runtime) only has
+        # pod-level series, so usage is per pod and limits are summed per pod. Apps (pulsar,
+        # voyager) are alerted on their errors instead: AppErrorLogs in the Loki ruler.
+        - name: pods
           rules:
-            - alert: AppMemoryHigh
+            - alert: PodMemoryNearLimit
               expr: |
-                label_replace(
-                  max by (namespace, pod) (container_memory_working_set_bytes{namespace="default", pod=~"(pulsar|voyager)-.*"})
-                  / max by (namespace, pod) (kube_pod_container_resource_limits{namespace="default", resource="memory", container=~"pulsar|voyager"}),
-                  "app", "$1", "pod", "(pulsar|voyager)-.*") > 0.85
+                max by (namespace, pod) (container_memory_working_set_bytes{pod!=""})
+                / max by (namespace, pod) (sum by (namespace, pod, container) (kube_pod_container_resource_limits{resource="memory"})) > 0.9
               for: 5m
+              labels: {severity: warning}
+              annotations:
+                summary: "{{ $labels.namespace }}/{{ $labels.pod }} is using {{ $value | humanizePercentage }} of its memory limit (OOMKill is next)"
+            - alert: PodCPUHigh
+              expr: max by (namespace, pod) (rate(container_cpu_usage_seconds_total{pod!=""}[5m])) > 0.75
+              for: 15m
               labels: {severity: info}
               annotations:
-                summary: "{{ $labels.app }} ({{ $labels.pod }}) is using {{ $value | humanizePercentage }} of its memory limit"
-            - alert: AppCPUHigh
-              expr: |
-                label_replace(
-                  max by (namespace, pod) (rate(container_cpu_usage_seconds_total{namespace="default", pod=~"(pulsar|voyager)-.*"}[5m])),
-                  "app", "$1", "pod", "(pulsar|voyager)-.*") > 0.2
-              for: 10m
-              labels: {severity: info}
-              annotations:
-                summary: "{{ $labels.app }} ({{ $labels.pod }}) has used {{ $value | humanize }} CPU cores for 10m (normal is ~0.005, request 0.01)"
+                summary: "{{ $labels.namespace }}/{{ $labels.pod }} has used {{ $value | humanize }} CPU cores for 15m (node has 6; most pods use <0.1)"
