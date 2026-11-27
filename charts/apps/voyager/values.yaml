@@ -1,7 +1,7 @@
 image:
   repository: voyager
   tag: latest
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
 
 replicaCount: 1
 
