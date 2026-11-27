@@ -56,9 +56,20 @@ data:
               summary: "{{ `{{ $value }}` }} liveness/readiness probe failures in namespace {{ `{{ $labels.namespace }}` }} (10m)"
           - alert: ArgoCDAppProblem
             expr: |
-              sum by (name) (count_over_time({job="k8s-events", involvedObject_kind="Application"} |~ "health status: .* -> (Degraded|Missing)|Sync operation to .* failed" | json name="involvedObject.name" [10m])) > 0
+              sum by (name) (count_over_time({job="k8s-events", involvedObject_kind="Application"} |~ "health status: .* -> (Degraded|Missing)" | json name="involvedObject.name" [10m])) > 0
             labels:
               severity: warning
               namespace: argocd
             annotations:
-              summary: "ArgoCD application {{ `{{ $labels.name }}` }} went Degraded/Missing or failed to sync"
+              summary: "ArgoCD application {{ `{{ $labels.name }}` }} went Degraded or Missing"
+          # A commit the Kubernetes API rejects never deploys: the live app keeps the old version, so no
+          # pod alert fires. The controller logs "Skipping auto-sync: failed previous sync attempt" on
+          # every reconcile (~3 min) while stuck, so this stays firing until a good commit syncs.
+          - alert: ArgoCDSyncFailing
+            expr: |
+              sum by (application) (count_over_time({kubernetes_namespace_name="argocd", kubernetes_container_name="application-controller"} |~ "Skipping auto-sync: failed previous sync attempt|Sync operation to [^ ]+ failed" | json log="log" | line_format "{{ `{{.log}}` }}" | logfmt [15m])) > 0
+            labels:
+              severity: warning
+              namespace: argocd
+            annotations:
+              summary: "ArgoCD cannot sync application {{ `{{ $labels.application }}` }}: its last commit was rejected and never deployed"
