@@ -5,7 +5,7 @@ prometheus:
     persistentVolume:
       size: 4Gi
     resources:
-      requests: {cpu: 100m, memory: 780Mi}
+      requests: {cpu: 100m, memory: 256Mi}
       limits: {memory: 768Mi}
   prometheus-pushgateway:
     enabled: false
