@@ -65,9 +65,11 @@ data:
           # A commit the Kubernetes API rejects never deploys: the live app keeps the old version, so no
           # pod alert fires. The controller logs "Skipping auto-sync: failed previous sync attempt" on
           # every reconcile (~3 min) while stuck, so this stays firing until a good commit syncs.
+          # "Retrying operation. Attempt #3+" fires it ~1-2 min after the commit instead of after
+          # ArgoCD's 5 retries (~7 min); transient failures normally succeed on retry 1-2.
           - alert: ArgoCDSyncFailing
             expr: |
-              sum by (application) (count_over_time({kubernetes_namespace_name="argocd", kubernetes_container_name="application-controller"} |~ "Skipping auto-sync: failed previous sync attempt|Sync operation to [^ ]+ failed" | json log="log" | line_format "{{ `{{.log}}` }}" | logfmt [15m])) > 0
+              sum by (application) (count_over_time({kubernetes_namespace_name="argocd", kubernetes_container_name="application-controller"} |~ "Skipping auto-sync: failed previous sync attempt|Sync operation to [^ ]+ failed|Retrying operation. Attempt #([3-9]|[1-9][0-9])" | json log="log" | line_format "{{ `{{.log}}` }}" | logfmt [15m])) > 0
             labels:
               severity: warning
               namespace: argocd
